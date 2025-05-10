@@ -2,6 +2,8 @@
 
 A no-nonsense PowerShell script to block or unblock all `.exe` files in a specified directory and its subdirectories using Windows Firewall rules. Built for sysadmins, pentesters, or power users who need control without the bloat.
 
+> ⚠️ **Note:** I am not the original author of this script. I streamlined its execution and improved usability to make it faster and more accessible for practical use cases.
+
 ---
 
 ## 🛠️ Features
@@ -33,9 +35,9 @@ A no-nonsense PowerShell script to block or unblock all `.exe` files in a specif
 2. **Start the script**  
    Open PowerShell and execute:
 
-   ````powershell
-   .\scripts\script.ps1```
-   ````
+   ```powershell
+   .\scripts\script.ps1
+   ```
 
 ---
 
