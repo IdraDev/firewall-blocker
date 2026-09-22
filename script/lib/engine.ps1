@@ -138,50 +138,61 @@ function Invoke-BlockRules {
     return $results.ToArray()
 }
 
-# Select the rules an unblock will remove. Directory scope matches by the
-# rule's Program path, independent of what is still on disk (orphan fix).
-# Also sweeps legacy v1 rules ("Block <name> Inbound/Outbound") whose program
-# is under the directory; legacy orphans whose exe path was never recorded
-# cannot be found - documented limitation.
-function Get-UnblockTargets {
-    param(
-        [ValidateSet('All', 'Directory')][string]$Scope,
-        [string]$Directory
-    )
-    $map = Get-RuleProgramMap
-    $targets = @()
-    if ($Scope -eq 'All') {
-        foreach ($r in $map.Rules) {
-            $targets += [pscustomobject]@{ Rule = $r; Legacy = $false; Program = $map.Programs[$r.Name] }
-        }
-        return $targets
-    }
-    $dir = $Directory.TrimEnd('\')
-    if ($dir -match '^[A-Za-z]:$') { $dir = $dir + '\' }
-    if ($dir.EndsWith('\')) { $prefix = $dir } else { $prefix = $dir + '\' }
-    foreach ($r in $map.Rules) {
-        $prog = $map.Programs[$r.Name]
-        if (-not $prog) { continue }
-        if ($prog.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -or
-            [string]::Equals($prog, $dir, [StringComparison]::OrdinalIgnoreCase)) {
-            $targets += [pscustomobject]@{ Rule = $r; Legacy = $false; Program = $prog }
-        }
-    }
-    # Legacy v1 sweep: literal Where-Object over the full rule dump, never a
-    # wildcard-interpreting -DisplayName query. v1 always created Block rules
-    # whose Direction matches the DisplayName suffix; require both so we never
-    # remove third-party rules (e.g. Allow rules) that merely share the name
-    # pattern.
-    $legacyRules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
+# Legacy v1 rules ("Block <name> Inbound/Outbound"), filtered literally, never
+# via a wildcard -DisplayName query. Requiring Block + matching Direction
+# spares third-party rules that merely share the name pattern.
+function Get-LegacyRules {
+    @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName -match '^Block .+ (Inbound|Outbound)$' -and $_.Group -ne $script:Group -and
                        [string]$_.Action -eq 'Block' -and [string]$_.Direction -eq $Matches[1] })
-    foreach ($r in $legacyRules) {
+}
+
+# Blocked directions per program path, group and legacy rules alike:
+# path -> @{ Inbound = bool; Outbound = bool }, case-insensitive keys.
+function Get-BlockedDirections {
+    $map = Get-RuleProgramMap
+    $index = @{}
+    foreach ($r in @($map.Rules) + @(Get-LegacyRules)) {
         $prog = $map.Programs[$r.Name]
-        if ($prog -and $prog.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
-            $targets += [pscustomobject]@{ Rule = $r; Legacy = $true; Program = $prog }
-        }
+        if (-not $prog) { continue }
+        if (-not $index.ContainsKey($prog)) { $index[$prog] = @{ Inbound = $false; Outbound = $false } }
+        $index[$prog][[string]$r.Direction] = $true
     }
-    return $targets
+    return $index
+}
+
+# Select the rules an unblock will remove, matched on the rule's stored
+# Program path, not the disk, so orphans of deleted folders are found too.
+# Legacy rules are swept only for Directory/Files scopes.
+function Get-UnblockTargets {
+    param(
+        [ValidateSet('All', 'Directory', 'Files')][string]$Scope,
+        [string]$Directory,
+        [string[]]$Files
+    )
+    $map = Get-RuleProgramMap
+    if ($Scope -eq 'All') {
+        return @(foreach ($r in $map.Rules) {
+            [pscustomobject]@{ Rule = $r; Legacy = $false; Program = $map.Programs[$r.Name] }
+        })
+    }
+    if ($Scope -eq 'Files') {
+        $set = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($f in $Files) { [void]$set.Add($f) }
+        $isMatch = { param($p) $set.Contains($p) }
+    } else {
+        $dir = $Directory.TrimEnd('\')
+        if ($dir -match '^[A-Za-z]:$') { $dir = $dir + '\' }
+        if ($dir.EndsWith('\')) { $prefix = $dir } else { $prefix = $dir + '\' }
+        $isMatch = { param($p) $p.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -or
+                               [string]::Equals($p, $dir, [StringComparison]::OrdinalIgnoreCase) }
+    }
+    return @(foreach ($r in @($map.Rules) + @(Get-LegacyRules)) {
+        $prog = $map.Programs[$r.Name]
+        if ($prog -and (& $isMatch $prog)) {
+            [pscustomobject]@{ Rule = $r; Legacy = ([string]$r.Group -ne $script:Group); Program = $prog }
+        }
+    })
 }
 
 # Removes rules one by one (never the bulk -Group call) so every failure is

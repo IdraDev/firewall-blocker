@@ -379,7 +379,8 @@ function Show-FileList {
         Wait-AnyKey 'press any key to go back'
         return
     }
-    $existing = Show-RuleLoad
+    Write-Seg @('  checking firewall rules ...', 'Text')
+    $dirs = Get-BlockedDirections
     $b = $script:G.Bullet
     $w = $script:Tui.Width
     $statW = 12
@@ -390,9 +391,9 @@ function Show-FileList {
     $blocked = 0; $none = 0; $part = 0
     $rows = @()
     foreach ($f in $files) {
-        $names = Get-RuleNames $f.FullName
-        $hasIn = $existing.ContainsKey($names.In)
-        $hasOut = $existing.ContainsKey($names.Out)
+        $d = $dirs[$f.FullName]
+        $hasIn = $d -and $d.Inbound
+        $hasOut = $d -and $d.Outbound
         $extra = ''
         if ($hasIn -and $hasOut) {
             $lab = "$($script:G.Ok) blocked"; $tok = 'Ok'; $blocked++

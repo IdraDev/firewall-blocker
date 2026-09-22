@@ -140,11 +140,11 @@ function Invoke-CliMode {
                 Write-Host "[WARN] no .exe files under $dir" -ForegroundColor Yellow
                 exit 4
             }
-            $existing = Get-FwbRules
+            $dirs = Get-BlockedDirections
             foreach ($f in $files) {
-                $names = Get-RuleNames $f.FullName
-                $hasIn = $existing.ContainsKey($names.In)
-                $hasOut = $existing.ContainsKey($names.Out)
+                $d = $dirs[$f.FullName]
+                $hasIn = $d -and $d.Inbound
+                $hasOut = $d -and $d.Outbound
                 if ($hasIn -and $hasOut) { $status = 'blocked' }
                 elseif ($hasIn) { $status = 'partial (in only)' }
                 elseif ($hasOut) { $status = 'partial (out only)' }
