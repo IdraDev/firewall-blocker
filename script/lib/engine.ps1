@@ -79,18 +79,16 @@ function Get-GroupRuleCount {
     return @(Get-NetFirewallRule -Group $script:Group -ErrorAction SilentlyContinue).Count
 }
 
-# One bulk join of group rules to their program paths. Each application
-# filter's InstanceID equals the owning rule's Name.
+# Group rules plus a Name -> program index over every application filter.
+# One -All query: piping rules into Get-NetFirewallApplicationFilter costs
+# ~140 ms per rule.
 function Get-RuleProgramMap {
     $rules = @(Get-NetFirewallRule -Group $script:Group -ErrorAction SilentlyContinue)
-    $byName = @{}
-    foreach ($r in $rules) { $byName[$r.Name] = $r }
     $programs = @{}
-    if ($rules.Count -gt 0) {
-        $filters = @($rules | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue)
-        foreach ($f in $filters) { $programs[$f.InstanceID] = $f.Program }
+    foreach ($f in @(Get-NetFirewallApplicationFilter -All -ErrorAction SilentlyContinue)) {
+        $programs[$f.InstanceID] = $f.Program
     }
-    return [pscustomobject]@{ Rules = $rules; ByName = $byName; Programs = $programs }
+    return [pscustomobject]@{ Rules = $rules; Programs = $programs }
 }
 
 # Creates block rules. Progress unit = one rule op (files x 2).
@@ -177,15 +175,10 @@ function Get-UnblockTargets {
     $legacyRules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName -match '^Block .+ (Inbound|Outbound)$' -and $_.Group -ne $script:Group -and
                        [string]$_.Action -eq 'Block' -and [string]$_.Direction -eq $Matches[1] })
-    if ($legacyRules.Count -gt 0) {
-        $lp = @{}
-        $lf = @($legacyRules | Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue)
-        foreach ($f in $lf) { $lp[$f.InstanceID] = $f.Program }
-        foreach ($r in $legacyRules) {
-            $prog = $lp[$r.Name]
-            if ($prog -and $prog.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
-                $targets += [pscustomobject]@{ Rule = $r; Legacy = $true; Program = $prog }
-            }
+    foreach ($r in $legacyRules) {
+        $prog = $map.Programs[$r.Name]
+        if ($prog -and $prog.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+            $targets += [pscustomobject]@{ Rule = $r; Legacy = $true; Program = $prog }
         }
     }
     return $targets
