@@ -29,7 +29,8 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      // the packaged build gets no renderer process with the sandbox on
+      sandbox: false,
     },
   });
 
