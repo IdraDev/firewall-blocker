@@ -1,43 +1,58 @@
 # 🔥 Firewall Blocker (v2.0)
 
-A single-file PowerShell tool to block or unblock every `.exe` in a directory tree using Windows Firewall rules. Interactive terminal UI by default, scriptable CLI mode for automation. Built for sysadmins and power users who need control without the bloat.
+Block or unblock every `.exe` in a directory tree with Windows Firewall rules. Use the desktop app, the interactive terminal UI, or the scriptable CLI: all three share one engine and see the same rules. Built for sysadmins and power users who need control without the bloat.
 
 ---
 
 ## 🛠️ Features
 
 - 🔐 Block all `.exe` files (inbound and outbound) in a target directory and its subdirectories.
-- ♻️ Unblock by directory or remove everything the tool created — works even after the folder was deleted (orphaned rules are cleaned up too).
+- ♻️ Unblock by file, by directory, or remove everything the tool created. Works even after the folder was deleted (orphaned rules are cleaned up too).
+- 🪟 Desktop app: pick a folder, filter, select, block or unblock with one click, live activity log.
 - 🖥️ Terminal UI: arrow-key menus, live progress bar, per-file audit view (`blocked / partial / none`), rules browser with pagination.
 - 🤖 CLI mode for scripts and scheduled tasks: `-Action Block|Unblock|List|Rules` with `-Path`, `-NoConfirm`, `-DryRun`.
-- 🔍 Dry-run everywhere: preview exactly what would be created or removed without touching the firewall (no admin needed).
-- 🏷️ Rules are tagged with the `FirewallBlocker` group and named from a hash of the full path — two `setup.exe` in different folders never collide, and cleanup is exact.
-- 🛡️ Safe by default: confirmation with file count before any change, real per-rule error reporting, meaningful exit codes.
-- ✅ No third-party dependencies. Pure Windows PowerShell 5.1, works in Windows Terminal and legacy conhost.
+- 🔍 Dry-run everywhere in the script: preview exactly what would be created or removed without touching the firewall (no admin needed).
+- 🏷️ Rules are tagged with the `FirewallBlocker` group and named from a hash of the full path: two `setup.exe` in different folders never collide, and cleanup is exact.
+- 🕰️ Rules created by v1.0 (`Block <name> Inbound/Outbound`) count as blocked and are removed by Unblock.
+- 🛡️ Safe by default: confirmation with file count before any bulk change, real per-rule error reporting, meaningful exit codes.
+- ✅ The script has no third-party dependencies: pure Windows PowerShell 5.1, works in Windows Terminal and legacy conhost.
 
 ---
 
 ## ⚙️ Requirements
 
 - Windows 10/11 with Windows PowerShell 5.1 (preinstalled).
-- Administrator privileges for blocking/unblocking (the script offers self-elevation; `List`, `Rules` and `-DryRun` work without).
-- Sane judgment — this can break stuff.
+- Administrator privileges for blocking/unblocking (the app and `start.bat` ask for them; `List`, `Rules` and `-DryRun` work without).
+- Sane judgment: this can break stuff.
+
+---
+
+## 📦 Download
+
+Grab the latest build from [Releases](https://github.com/IdraDev/Firewall-Blocker/releases):
+
+- `FirewallBlocker-<version>-portable.exe`: desktop app, no install.
+- `FirewallBlocker-<version>-script.zip`: `start.bat` plus the PowerShell script (TUI and CLI).
 
 ---
 
 ## 🚀 Usage
 
-### Option 1 — start.bat (recommended)
+### Option 1: desktop app
+
+Run `FirewallBlocker-<version>-portable.exe` and accept the administrator prompt. With nothing selected, Block and Unblock apply to every file the filter shows.
+
+### Option 2: start.bat
 
 Double-click `start.bat`. It requests administrator rights and launches the interactive TUI.
 
-### Option 2 — PowerShell (interactive TUI)
+### Option 3: PowerShell (interactive TUI)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\script\script.ps1
 ```
 
-### Option 3 — CLI mode (automation)
+### Option 4: CLI mode (automation)
 
 ```powershell
 # Preview what would be blocked (no admin required)
@@ -61,7 +76,22 @@ powershell -ExecutionPolicy Bypass -File .\script\script.ps1
 
 **Exit codes:** `0` ok · `1` some operations failed · `2` not administrator · `3` bad arguments/path · `4` nothing to do · `5` firewall service not running.
 
-> ℹ️ Rules created by v1.0 are recognized and removed by the directory-scoped Unblock.
+---
+
+## 🧱 Build from source
+
+```powershell
+# engine self-check, no admin needed
+powershell -NoProfile -ExecutionPolicy Bypass -File .\script\tests\engine.tests.ps1
+
+# desktop app (needs Bun): output in app\release
+cd app
+bun install
+bun run typecheck
+bun run dist
+```
+
+The app bundles `script\lib\engine.ps1`, the same engine the script uses.
 
 ---
 
