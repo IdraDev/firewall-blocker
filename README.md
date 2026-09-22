@@ -1,43 +1,67 @@
-# 🔥 Firewall Blocker Script (v1.0)
+# 🔥 Firewall Blocker (v2.0)
 
-A no-nonsense PowerShell script to block or unblock all `.exe` files in a specified directory and its subdirectories using Windows Firewall rules. Built for sysadmins, pentesters, or power users who need control without the bloat.
-
-> ⚠️ **Note:** I am not the original author of this script. I streamlined its execution and improved usability to make it faster and more accessible for practical use cases.
+A single-file PowerShell tool to block or unblock every `.exe` in a directory tree using Windows Firewall rules. Interactive terminal UI by default, scriptable CLI mode for automation. Built for sysadmins and power users who need control without the bloat.
 
 ---
 
 ## 🛠️ Features
 
-- 🔐 Block all `.exe` files (inbound and outbound) in a target directory.
-- ♻️ Remove all previously created firewall rules.
-- 👀 List all `.exe` files recursively in a folder tree.
-- ✅ No third-party dependencies. Native PowerShell.
-- 🖥️ Precompiled executables available (`.exe` 64-bit & 32-bit).
-- ⚡ Includes a `.bat` file for quick execution.
+- 🔐 Block all `.exe` files (inbound and outbound) in a target directory and its subdirectories.
+- ♻️ Unblock by directory or remove everything the tool created — works even after the folder was deleted (orphaned rules are cleaned up too).
+- 🖥️ Terminal UI: arrow-key menus, live progress bar, per-file audit view (`blocked / partial / none`), rules browser with pagination.
+- 🤖 CLI mode for scripts and scheduled tasks: `-Action Block|Unblock|List|Rules` with `-Path`, `-NoConfirm`, `-DryRun`.
+- 🔍 Dry-run everywhere: preview exactly what would be created or removed without touching the firewall (no admin needed).
+- 🏷️ Rules are tagged with the `FirewallBlocker` group and named from a hash of the full path — two `setup.exe` in different folders never collide, and cleanup is exact.
+- 🛡️ Safe by default: confirmation with file count before any change, real per-rule error reporting, meaningful exit codes.
+- ✅ No third-party dependencies. Pure Windows PowerShell 5.1, works in Windows Terminal and legacy conhost.
 
 ---
 
 ## ⚙️ Requirements
 
-- Windows OS with PowerShell.
-- Administrator privileges (mandatory).
+- Windows 10/11 with Windows PowerShell 5.1 (preinstalled).
+- Administrator privileges for blocking/unblocking (the script offers self-elevation; `List`, `Rules` and `-DryRun` work without).
 - Sane judgment — this can break stuff.
 
 ---
 
 ## 🚀 Usage
 
-### 🔧 Option 1 — Run via PowerShell
+### Option 1 — start.bat (recommended)
 
-1. **Run as Administrator**  
-   This script **must** be executed with elevated privileges.
+Double-click `start.bat`. It requests administrator rights and launches the interactive TUI.
 
-2. **Start the script**  
-   Open PowerShell and execute:
+### Option 2 — PowerShell (interactive TUI)
 
-   ```powershell
-   .\scripts\script.ps1
-   ```
+```powershell
+powershell -ExecutionPolicy Bypass -File .\script\script.ps1
+```
+
+### Option 3 — CLI mode (automation)
+
+```powershell
+# Preview what would be blocked (no admin required)
+.\script\script.ps1 -Action Block -Path "C:\Games" -DryRun
+
+# Block everything under a directory (admin required)
+.\script\script.ps1 -Action Block -Path "C:\Games"
+
+# Show block status of every .exe under a directory
+.\script\script.ps1 -Action List -Path "C:\Games"
+
+# List all rules created by this tool
+.\script\script.ps1 -Action Rules
+
+# Remove rules for one directory (works even if the folder was deleted)
+.\script\script.ps1 -Action Unblock -Path "C:\Games"
+
+# Remove ALL rules created by this tool, no prompt
+.\script\script.ps1 -Action Unblock -NoConfirm
+```
+
+**Exit codes:** `0` ok · `1` some operations failed · `2` not administrator · `3` bad arguments/path · `4` nothing to do · `5` firewall service not running.
+
+> ℹ️ Rules created by v1.0 are recognized and removed by the directory-scoped Unblock.
 
 ---
 
