@@ -627,10 +627,11 @@ try {
                 # single pre-quoted argument string: PS 5.1 Start-Process does
                 # not quote array elements that contain spaces. Forward the
                 # bound switches so -DryRun survives elevation.
-                $argStr = "-ExecutionPolicy Bypass -File `"$PSCommandPath`""
+                $argStr = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
                 if ($DryRun) { $argStr += ' -DryRun' }
                 if ($Plain)  { $argStr += ' -Plain' }
-                if ($Path)   { $argStr += " -Path `"$Path`"" }
+                # the space keeps "C:\" from escaping its closing quote; the path is trimmed on read
+                if ($Path)   { $argStr += " -Path `"$Path `"" }
                 Start-Process powershell -Verb RunAs -ArgumentList $argStr
                 exit 0
             } catch {
