@@ -1,0 +1,66 @@
+{
+  "name": "firewall-blocker",
+  "version": "2.0.0",
+  "description": "Block/unblock Windows Firewall rules for .exe files in a folder",
+  "main": "dist-electron/main.js",
+  "author": "IdraDev",
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -k \"bun run dev:vite\" \"bun run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 && tsc -p electron/tsconfig.json && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p electron/tsconfig.json",
+    "build": "bun run build:renderer && bun run build:main",
+    "dist": "bun run build && electron-builder --win portable",
+    "dist:dir": "bun run build && electron-builder --win portable --dir"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "wait-on": "^8.0.1"
+  },
+  "dependencies": {
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "net.idragraphics.firewallblocker",
+    "productName": "Firewall Blocker",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "portable": {
+      "artifactName": "FirewallBlocker-${version}-portable.exe"
+    },
+    "asar": true
+  }
+}
