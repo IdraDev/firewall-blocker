@@ -17,6 +17,7 @@ import {
   Trash2,
   ExternalLink,
 } from "lucide-react";
+import type { Status } from "../electron/preload";
 
 type ExeFile = { name: string; path: string; size: number };
 type LogEntry = { level: "info" | "ok" | "error"; msg: string; ts: number };
@@ -34,7 +35,7 @@ export default function App() {
   const [version, setVersion] = useState<string>("");
   const [folder, setFolder] = useState<string | null>(null);
   const [files, setFiles] = useState<ExeFile[]>([]);
-  const [blocked, setBlocked] = useState<Record<string, boolean>>({});
+  const [status, setStatus] = useState<Record<string, Status>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<string>("");
   const [scanning, setScanning] = useState(false);
@@ -52,13 +53,9 @@ export default function App() {
     const offLog = window.fb.onLog((e) =>
       setLogs((l) => [...l.slice(-499), { ...e, ts: Date.now() }])
     );
-    const offRule = window.fb.onRuleUpdate(({ path, blocked }) =>
-      setBlocked((b) => ({ ...b, [path]: blocked }))
-    );
     const offProg = window.fb.onProgress((p) => setProgress(p));
     return () => {
       offLog();
-      offRule();
       offProg();
     };
   }, []);
@@ -77,9 +74,14 @@ export default function App() {
 
   const stats = useMemo(() => {
     const total = files.length;
-    const blockedCount = files.filter((f) => blocked[f.path]).length;
-    return { total, blocked: blockedCount, free: total - blockedCount };
-  }, [files, blocked]);
+    const blocked = files.filter((f) => status[f.path] === "blocked").length;
+    const partial = files.filter((f) => status[f.path] === "partial").length;
+    return { total, blocked, partial, free: total - blocked - partial };
+  }, [files, status]);
+
+  function addLog(level: LogEntry["level"], msg: string) {
+    setLogs((l) => [...l.slice(-499), { level, msg, ts: Date.now() }]);
+  }
 
   async function pickAndScan() {
     const f = await window.fb.pickFolder();
@@ -94,19 +96,13 @@ export default function App() {
     setScanning(true);
     setSelected(new Set());
     setFiles([]);
-    setBlocked({});
+    setStatus({});
     try {
       const found = await window.fb.scanExe(dir);
       setFiles(found);
-      if (found.length) {
-        const status = await window.fb.rulesStatus(found.map((f) => f.path));
-        setBlocked(status || {});
-      }
+      if (found.length) setStatus(await window.fb.rulesStatus(found.map((f) => f.path)));
     } catch (e) {
-      setLogs((l) => [
-        ...l,
-        { level: "error", msg: `Scan failed: ${(e as Error).message}`, ts: Date.now() },
-      ]);
+      addLog("error", `Scan failed: ${(e as Error).message}`);
     } finally {
       setScanning(false);
     }
@@ -126,26 +122,18 @@ export default function App() {
     });
   }
 
-  async function doBlock(targets: ExeFile[]) {
-    if (!isAdmin) return;
-    if (!targets.length) return;
+  async function run(verb: "Block" | "Unblock", targets: ExeFile[]) {
+    if (!isAdmin || !targets.length) return;
+    if (targets.length > 1 && !window.confirm(`${verb} ${targets.length} files?`)) return;
     setBusy(true);
-    setProgress({ done: 0, total: targets.length });
+    setProgress({ done: 0, total: targets.length * 2 });
+    const refs = targets.map((t) => ({ name: t.name, path: t.path }));
     try {
-      await window.fb.block(targets.map((t) => ({ name: t.name, path: t.path })));
-    } finally {
-      setBusy(false);
-      setTimeout(() => setProgress(null), 1500);
-    }
-  }
-
-  async function doUnblock(targets: ExeFile[]) {
-    if (!isAdmin) return;
-    if (!targets.length) return;
-    setBusy(true);
-    setProgress({ done: 0, total: targets.length });
-    try {
-      await window.fb.unblock(targets.map((t) => ({ name: t.name, path: t.path })));
+      await (verb === "Block" ? window.fb.block(refs) : window.fb.unblock(refs));
+      const fresh = await window.fb.rulesStatus(refs.map((r) => r.path));
+      setStatus((s) => ({ ...s, ...fresh }));
+    } catch (e) {
+      addLog("error", `${verb} failed: ${(e as Error).message}`);
     } finally {
       setBusy(false);
       setTimeout(() => setProgress(null), 1500);
@@ -153,6 +141,8 @@ export default function App() {
   }
 
   const selectedFiles = files.filter((f) => selected.has(f.path));
+  // with nothing selected, bulk actions apply to what the filter shows
+  const targets = selectedFiles.length ? selectedFiles : filtered;
   const allSelected = filtered.length > 0 && filtered.every((f) => selected.has(f.path));
 
   return (
@@ -229,22 +219,22 @@ export default function App() {
           />
         </div>
         <button
-          onClick={() => doBlock(selectedFiles.length ? selectedFiles : files)}
-          disabled={busy || !isAdmin || !files.length}
+          onClick={() => run("Block", targets)}
+          disabled={busy || !isAdmin || !targets.length}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-medium disabled:opacity-40"
           title={!isAdmin ? "Requires Administrator" : ""}
         >
           <Shield size={15} />
-          Block {selectedFiles.length ? `(${selectedFiles.length})` : "all"}
+          Block ({targets.length})
         </button>
         <button
-          onClick={() => doUnblock(selectedFiles.length ? selectedFiles : files)}
-          disabled={busy || !isAdmin || !files.length}
+          onClick={() => run("Unblock", targets)}
+          disabled={busy || !isAdmin || !targets.length}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium disabled:opacity-40"
           title={!isAdmin ? "Requires Administrator" : ""}
         >
           <ShieldOff size={15} />
-          Unblock {selectedFiles.length ? `(${selectedFiles.length})` : "all"}
+          Unblock ({targets.length})
         </button>
       </div>
 
@@ -252,11 +242,12 @@ export default function App() {
       <div className="px-6 py-2 flex items-center justify-between gap-4 border-b border-white/5 bg-ink-900/20">
         <div className="text-xs text-ink-300 truncate">
           <span className="text-ink-400">Folder:</span>{" "}
-          <span className="font-mono text-ink-200">{folder ?? "— none selected —"}</span>
+          <span className="font-mono text-ink-200">{folder ?? "none selected"}</span>
         </div>
         <div className="flex items-center gap-3 text-xs">
           <Stat label="Total" value={stats.total} tone="neutral" />
           <Stat label="Blocked" value={stats.blocked} tone="bad" />
+          {stats.partial > 0 && <Stat label="Partial" value={stats.partial} tone="warn" />}
           <Stat label="Free" value={stats.free} tone="good" />
         </div>
       </div>
@@ -284,7 +275,8 @@ export default function App() {
             ) : (
               <ul className="divide-y divide-white/5">
                 {filtered.map((f) => {
-                  const isBlocked = !!blocked[f.path];
+                  const s = status[f.path] ?? "none";
+                  const isBlocked = s === "blocked";
                   const isSel = selected.has(f.path);
                   return (
                     <li
@@ -315,6 +307,13 @@ export default function App() {
                         <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-rose-500/10 text-rose-300 border border-rose-500/20">
                           <Lock size={11} /> Blocked
                         </span>
+                      ) : s === "partial" ? (
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                          title="Only one direction is blocked"
+                        >
+                          <AlertTriangle size={11} /> Partial
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
                           <Unlock size={11} /> Allowed
@@ -330,7 +329,7 @@ export default function App() {
                         </button>
                         {isBlocked ? (
                           <button
-                            onClick={() => doUnblock([f])}
+                            onClick={() => run("Unblock", [f])}
                             disabled={busy || !isAdmin}
                             className="w-7 h-7 grid place-items-center rounded hover:bg-emerald-500/20 text-emerald-300 disabled:opacity-40"
                             title="Unblock"
@@ -339,7 +338,7 @@ export default function App() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => doBlock([f])}
+                            onClick={() => run("Block", [f])}
                             disabled={busy || !isAdmin}
                             className="w-7 h-7 grid place-items-center rounded hover:bg-rose-500/20 text-rose-300 disabled:opacity-40"
                             title="Block"
@@ -412,7 +411,8 @@ export default function App() {
             )}
           </div>
           <div className="px-4 py-2 border-t border-white/5 text-[10px] text-ink-400">
-            Rules created use the names <span className="font-mono">Block &lt;name&gt; Inbound/Outbound</span>.
+            Rules go in the <span className="font-mono">FirewallBlocker</span> group, shared with the
+            script. Rules from v1 count as blocked.
           </div>
         </aside>
       </div>
@@ -446,13 +446,15 @@ function Stat({
 }: {
   label: string;
   value: number;
-  tone: "good" | "bad" | "neutral";
+  tone: "good" | "bad" | "warn" | "neutral";
 }) {
   const cls =
     tone === "good"
       ? "text-emerald-300"
       : tone === "bad"
       ? "text-rose-300"
+      : tone === "warn"
+      ? "text-amber-300"
       : "text-ink-200";
   return (
     <div className="flex items-center gap-1.5">
@@ -493,7 +495,7 @@ function EmptyState({ folder }: { folder: string | null }) {
         <p className="mt-1 text-xs text-ink-400">
           {folder
             ? "The selected folder and its subdirectories contain no executables."
-            : "Choose any directory — we walk it recursively and surface every .exe so you can block or unblock with one click."}
+            : "Choose any directory: we walk it recursively and surface every .exe so you can block or unblock with one click."}
         </p>
       </div>
     </div>

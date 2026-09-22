@@ -13,7 +13,8 @@
     "build:main": "tsc -p electron/tsconfig.json",
     "build": "bun run build:renderer && bun run build:main",
     "dist": "bun run build && electron-builder --win portable",
-    "dist:dir": "bun run build && electron-builder --win portable --dir"
+    "dist:dir": "bun run build && electron-builder --win portable --dir",
+    "typecheck": "tsc -p tsconfig.json && tsc -p electron/tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
@@ -47,6 +48,12 @@
       "dist/**/*",
       "dist-electron/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../script/lib/engine.ps1",
+        "to": "engine.ps1"
+      }
     ],
     "win": {
       "target": [

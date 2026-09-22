@@ -6,6 +6,11 @@ import * as os from "node:os";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
+// Same rule engine as the PowerShell script, so both see the same rules.
+const enginePath = app.isPackaged
+  ? path.join(process.resourcesPath, "engine.ps1")
+  : path.join(__dirname, "../../script/lib/engine.ps1");
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
@@ -24,7 +29,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
@@ -42,16 +47,8 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+app.whenReady().then(createWindow);
+app.on("window-all-closed", () => app.quit());
 
 // ---------- Window controls ----------
 ipcMain.handle("win:minimize", () => mainWindow?.minimize());
@@ -62,99 +59,90 @@ ipcMain.handle("win:maximize", () => {
 });
 ipcMain.handle("win:close", () => mainWindow?.close());
 
-// ---------- Helpers ----------
-function isAdmin(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const ps = spawn(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
-      ],
-      { windowsHide: true }
-    );
-    let out = "";
-    ps.stdout.on("data", (d) => (out += d.toString()));
-    ps.on("close", () => resolve(out.trim().toLowerCase() === "true"));
-    ps.on("error", () => resolve(false));
-  });
+// ---------- Engine bridge ----------
+type Status = "blocked" | "partial" | "none";
+type EngineResult = { File: string; Name: string; Direction: string; Outcome: string; Detail: string };
+type EngineLine = Record<string, any>;
+
+function psQuote(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`;
 }
 
-function runPSJson<T = unknown>(script: string): Promise<T> {
+// Runs `body` with the engine loaded, `input` as JSON on stdin, one JSON object
+// per stdout line. The engine is loaded from text, so execution policy does not apply.
+function runEngine(body: string, input: unknown, onLine?: (o: EngineLine) => void): Promise<EngineLine[]> {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$ProgressPreference = 'SilentlyContinue'",
+    `. ([scriptblock]::Create([IO.File]::ReadAllText(${psQuote(enginePath)})))`,
+    "$req = (New-Object IO.StreamReader([Console]::OpenStandardInput(), [Text.Encoding]::UTF8)).ReadToEnd() | ConvertFrom-Json",
+    "$out = New-Object IO.StreamWriter([Console]::OpenStandardOutput(), (New-Object Text.UTF8Encoding $false))",
+    "$out.AutoFlush = $true",
+    "function Emit($o) { $out.WriteLine((ConvertTo-Json -InputObject $o -Compress -Depth 4)) }",
+    body,
+  ].join("\n");
   return new Promise((resolve, reject) => {
     const ps = spawn(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+      ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
       { windowsHide: true }
     );
-    let out = "";
+    const lines: EngineLine[] = [];
+    let buf = "";
     let err = "";
-    ps.stdout.on("data", (d) => (out += d.toString()));
+    ps.stdout.setEncoding("utf8");
+    ps.stdout.on("data", (d: string) => {
+      buf += d;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (!line) continue;
+        let o: EngineLine;
+        try {
+          o = JSON.parse(line);
+        } catch {
+          err += line + "\n";
+          continue;
+        }
+        lines.push(o);
+        onLine?.(o);
+      }
+    });
     ps.stderr.on("data", (d) => (err += d.toString()));
-    ps.on("close", (code) => {
-      if (code !== 0) return reject(new Error(err || `PS exit ${code}`));
-      const trimmed = out.trim();
-      if (!trimmed) return resolve(null as T);
-      try {
-        resolve(JSON.parse(trimmed) as T);
-      } catch (e) {
-        reject(new Error(`JSON parse fail: ${(e as Error).message}\nOutput: ${trimmed.slice(0, 500)}`));
-      }
-    });
     ps.on("error", reject);
-  });
-}
-
-function streamPS(
-  script: string,
-  onLine: (line: string, stream: "stdout" | "stderr") => void
-): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const ps = spawn(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { windowsHide: true }
+    ps.on("close", (code) =>
+      code === 0 ? resolve(lines) : reject(new Error(err.trim() || `PowerShell exited with code ${code}`))
     );
-    let stdoutBuf = "";
-    let stderrBuf = "";
-    ps.stdout.on("data", (d) => {
-      stdoutBuf += d.toString();
-      let idx;
-      while ((idx = stdoutBuf.indexOf("\n")) >= 0) {
-        const line = stdoutBuf.slice(0, idx).replace(/\r$/, "");
-        stdoutBuf = stdoutBuf.slice(idx + 1);
-        if (line) onLine(line, "stdout");
-      }
-    });
-    ps.stderr.on("data", (d) => {
-      stderrBuf += d.toString();
-      let idx;
-      while ((idx = stderrBuf.indexOf("\n")) >= 0) {
-        const line = stderrBuf.slice(0, idx).replace(/\r$/, "");
-        stderrBuf = stderrBuf.slice(idx + 1);
-        if (line) onLine(line, "stderr");
-      }
-    });
-    ps.on("close", (code) => {
-      if (stdoutBuf.trim()) onLine(stdoutBuf.trim(), "stdout");
-      if (stderrBuf.trim()) onLine(stderrBuf.trim(), "stderr");
-      resolve(code ?? 0);
-    });
-    ps.on("error", reject);
+    ps.stdin.end(JSON.stringify(input ?? null));
   });
 }
 
-function psEscape(s: string): string {
-  return s.replace(/'/g, "''");
-}
+const PS_ADMIN = `Emit @{ admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }`;
+
+const PS_STATUS = `
+$dirs = Get-BlockedDirections
+foreach ($p in @($req.paths)) {
+  $d = $dirs[$p]
+  if ($d -and $d.Inbound -and $d.Outbound) { $s = 'blocked' } elseif ($d) { $s = 'partial' } else { $s = 'none' }
+  Emit @{ path = $p; status = $s }
+}`;
+
+const PS_PROGRESS = `{ param($op, $total, $r) Emit @{ op = $op; total = $total; result = $r } }`;
+
+const PS_BLOCK = `
+$files = @($req.files | ForEach-Object { [pscustomobject]@{ FullName = $_.path; Name = $_.name } })
+$null = Invoke-BlockRules -Files $files -Existing (Get-FwbRules) -DryRun $false -OnProgress ${PS_PROGRESS}`;
+
+const PS_UNBLOCK = `
+$targets = @(Get-UnblockTargets -Scope Files -Files @($req.paths))
+$null = Invoke-UnblockRules -Targets $targets -DryRun $false -OnProgress ${PS_PROGRESS}`;
 
 // ---------- IPC: app info / picker / scan ----------
 ipcMain.handle("app:info", async () => {
+  const [info] = await runEngine(PS_ADMIN, null).catch(() => []);
   return {
-    isAdmin: await isAdmin(),
-    platform: process.platform,
+    isAdmin: info?.admin === true,
     version: app.getVersion(),
     user: os.userInfo().username,
   };
@@ -196,107 +184,50 @@ ipcMain.handle("scan:exe", async (_e, dir: string) => {
   return results;
 });
 
-// Return which exe paths already have block rules.
+// Block state per exe path, legacy v1 rules included.
 ipcMain.handle("rules:status", async (_e, paths: string[]) => {
-  if (!paths.length) return {};
-  const script = `
-$ErrorActionPreference='SilentlyContinue'
-$paths = @(${paths.map((p) => `'${psEscape(p)}'`).join(",")})
-$result = @{}
-$apps = Get-NetFirewallApplicationFilter | Select-Object Program,InstanceID
-$rules = Get-NetFirewallRule -Action Block
-$ruleMap = @{}
-foreach ($r in $rules) { $ruleMap[$r.InstanceID] = $r }
-foreach ($p in $paths) {
-  $matches = $apps | Where-Object { $_.Program -ieq $p }
-  $blocked = $false
-  foreach ($m in $matches) {
-    if ($ruleMap.ContainsKey($m.InstanceID)) { $blocked = $true; break }
-  }
-  $result[$p] = $blocked
-}
-$result | ConvertTo-Json -Compress
-`;
-  try {
-    return await runPSJson<Record<string, boolean>>(script);
-  } catch {
-    return {} as Record<string, boolean>;
-  }
+  const status: Record<string, Status> = {};
+  if (!paths.length) return status;
+  for (const o of await runEngine(PS_STATUS, { paths })) status[o.path] = o.status;
+  return status;
 });
 
-// ---------- Block / Unblock streaming actions ----------
+// ---------- Block / Unblock ----------
 function send(channel: string, payload: unknown) {
   mainWindow?.webContents.send(channel, payload);
 }
 
-ipcMain.handle("action:block", async (_e, files: { name: string; path: string }[]) => {
-  if (!files.length) return { ok: 0, fail: 0 };
-  let ok = 0;
-  let fail = 0;
-  send("log", { level: "info", msg: `Starting BLOCK for ${files.length} file(s)...` });
-  for (const f of files) {
-    const safeName = psEscape(f.name);
-    const safePath = psEscape(f.path);
-    const script = `
-$ErrorActionPreference='Stop'
-try {
-  $in  = Get-NetFirewallRule -DisplayName 'Block ${safeName} Inbound'  -ErrorAction SilentlyContinue
-  $out = Get-NetFirewallRule -DisplayName 'Block ${safeName} Outbound' -ErrorAction SilentlyContinue
-  if (-not $in)  { New-NetFirewallRule -DisplayName 'Block ${safeName} Inbound'  -Direction Inbound  -Program '${safePath}' -Action Block -Profile Any | Out-Null }
-  if (-not $out) { New-NetFirewallRule -DisplayName 'Block ${safeName} Outbound' -Direction Outbound -Program '${safePath}' -Action Block -Profile Any | Out-Null }
-  Write-Output 'OK'
-} catch {
-  Write-Error $_.Exception.Message
-  exit 1
+async function runAction(verb: "Block" | "Unblock", files: { name: string; path: string }[]) {
+  if (!files.length) return;
+  send("log", { level: "info", msg: `${verb}: ${files.length} file(s)...` });
+  const counts: Record<string, number> = {};
+  const body = verb === "Block" ? PS_BLOCK : PS_UNBLOCK;
+  const input = verb === "Block" ? { files } : { paths: files.map((f) => f.path) };
+  try {
+    await runEngine(body, input, (o) => {
+      const r = o.result as EngineResult;
+      counts[r.Outcome] = (counts[r.Outcome] ?? 0) + 1;
+      if (r.Outcome === "Failed") {
+        send("log", { level: "error", msg: `${r.Name} (${r.Direction.toLowerCase()}): ${r.Detail}` });
+      }
+      send("progress", { done: o.op, total: o.total });
+    });
+  } catch (e) {
+    counts.Failed = (counts.Failed ?? 0) + 1;
+    send("log", { level: "error", msg: (e as Error).message });
+  }
+  const summary = Object.entries(counts)
+    .map(([k, v]) => `${v} ${k.toLowerCase()}`)
+    .join(", ");
+  send("log", {
+    level: counts.Failed ? "error" : "ok",
+    msg: `${verb} done: ${summary || "no matching rules"}`,
+  });
 }
-`;
-    const code = await streamPS(script, (line, stream) => {
-      if (stream === "stderr") send("log", { level: "error", msg: `[${f.name}] ${line}` });
-    });
-    if (code === 0) {
-      ok++;
-      send("log", { level: "ok", msg: `Blocked ${f.name}` });
-      send("rule:update", { path: f.path, blocked: true });
-    } else {
-      fail++;
-      send("log", { level: "error", msg: `Failed to block ${f.name}` });
-    }
-    send("progress", { done: ok + fail, total: files.length });
-  }
-  send("log", { level: "info", msg: `Done. ${ok} ok, ${fail} fail.` });
-  return { ok, fail };
-});
 
-ipcMain.handle("action:unblock", async (_e, files: { name: string; path: string }[]) => {
-  if (!files.length) return { ok: 0, fail: 0 };
-  let ok = 0;
-  let fail = 0;
-  send("log", { level: "info", msg: `Starting UNBLOCK for ${files.length} file(s)...` });
-  for (const f of files) {
-    const safeName = psEscape(f.name);
-    const script = `
-$ErrorActionPreference='SilentlyContinue'
-Remove-NetFirewallRule -DisplayName 'Block ${safeName} Inbound'  | Out-Null
-Remove-NetFirewallRule -DisplayName 'Block ${safeName} Outbound' | Out-Null
-Write-Output 'OK'
-`;
-    const code = await streamPS(script, (line, stream) => {
-      if (stream === "stderr") send("log", { level: "error", msg: `[${f.name}] ${line}` });
-    });
-    if (code === 0) {
-      ok++;
-      send("log", { level: "ok", msg: `Unblocked ${f.name}` });
-      send("rule:update", { path: f.path, blocked: false });
-    } else {
-      fail++;
-      send("log", { level: "error", msg: `Failed to unblock ${f.name}` });
-    }
-    send("progress", { done: ok + fail, total: files.length });
-  }
-  send("log", { level: "info", msg: `Done. ${ok} ok, ${fail} fail.` });
-  return { ok, fail };
-});
+ipcMain.handle("action:block", (_e, files) => runAction("Block", files));
+ipcMain.handle("action:unblock", (_e, files) => runAction("Unblock", files));
 
 ipcMain.handle("shell:openPath", async (_e, p: string) => {
-  await shell.showItemInFolder(p);
+  shell.showItemInFolder(p);
 });
