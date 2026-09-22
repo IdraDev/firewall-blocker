@@ -29,7 +29,7 @@ Block or unblock every `.exe` in a directory tree with Windows Firewall rules. U
 
 ## 📦 Download
 
-Grab the latest build from [Releases](https://github.com/IdraDev/Firewall-Blocker/releases):
+Grab the latest build from [Releases](https://github.com/IdraDev/Simple-Firewall-Blocker/releases):
 
 - `FirewallBlocker-<version>-portable.exe`: desktop app, no install.
 - `FirewallBlocker-<version>-script.zip`: `start.bat` plus the PowerShell script (TUI and CLI).
