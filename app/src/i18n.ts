@@ -2,7 +2,7 @@
 const pl = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 const en = {
-  nav: { folder: "Folder", rules: "Rules", settings: "Settings" },
+  nav: { folder: "Folder", rules: "Rules", settings: "Settings", expand: "Expand navigation", collapse: "Collapse navigation" },
   banner: {
     notAdmin: "Not running as administrator: blocking and unblocking are disabled.",
     firewallOff: "The Windows Firewall service (mpssvc) is not running. Start it to change rules.",
@@ -124,7 +124,7 @@ const en = {
 export type Strings = typeof en;
 
 const it: Strings = {
-  nav: { folder: "Cartella", rules: "Regole", settings: "Impostazioni" },
+  nav: { folder: "Cartella", rules: "Regole", settings: "Impostazioni", expand: "Espandi il menu", collapse: "Comprimi il menu" },
   banner: {
     notAdmin: "Non in esecuzione come amministratore: blocco e sblocco sono disattivati.",
     firewallOff: "Il servizio Windows Firewall (mpssvc) non è in esecuzione. Avvialo per modificare le regole.",

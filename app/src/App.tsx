@@ -4,27 +4,17 @@ import {
   FluentProvider,
   MessageBar,
   MessageBarBody,
-  Tab,
-  TabList,
   Title2,
   ToggleButton,
   type BrandVariants,
   type Theme,
 } from "@fluentui/react-components";
-import {
-  bundleIcon,
-  FolderFilled,
-  FolderRegular,
-  HistoryRegular,
-  SettingsFilled,
-  SettingsRegular,
-  ShieldFilled,
-  ShieldRegular,
-} from "@fluentui/react-icons";
+import { HistoryRegular } from "@fluentui/react-icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
 import { FolderPage } from "./FolderPage";
 import { t } from "./i18n";
+import { NavPane, type Page } from "./Nav";
 import { OpsProvider, useOps } from "./ops";
 import { ActivityPanel, OperationBar, SummaryBar } from "./OpStatus";
 import { RulesPage } from "./RulesPage";
@@ -57,12 +47,6 @@ const themes: Record<"light" | "dark", Theme> = {
     colorNeutralForegroundOnBrand: "#000000",
   },
 };
-
-const FolderIcon = bundleIcon(FolderFilled, FolderRegular);
-const RulesIcon = bundleIcon(ShieldFilled, ShieldRegular);
-const SettingsIcon = bundleIcon(SettingsFilled, SettingsRegular);
-
-type Page = "folder" | "rules" | "settings";
 
 function useSystemDark() {
   const query = matchMedia("(prefers-color-scheme: dark)");
@@ -101,26 +85,16 @@ export default function App() {
 function Shell({ setting, onSetting }: { setting: ThemeSetting; onSetting: (s: ThemeSetting) => void }) {
   const [page, setPage] = useState<Page>("folder");
   const [logOpen, setLogOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("navCollapsed") === "1");
   const { env } = useOps();
-  const select = (_: unknown, d: { value: unknown }) => setPage(d.value as Page);
+
+  useEffect(() => {
+    localStorage.setItem("navCollapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
 
   return (
-    <div className={logOpen ? "shell compact" : "shell"}>
-      <nav className="nav">
-        <TabList vertical size="large" selectedValue={page} onTabSelect={select}>
-          <Tab value="folder" icon={<FolderIcon />} aria-label={t.nav.folder}>
-            {t.nav.folder}
-          </Tab>
-          <Tab value="rules" icon={<RulesIcon />} aria-label={t.nav.rules}>
-            {t.nav.rules}
-          </Tab>
-        </TabList>
-        <TabList vertical size="large" selectedValue={page} onTabSelect={select} className="nav-end">
-          <Tab value="settings" icon={<SettingsIcon />} aria-label={t.nav.settings}>
-            {t.nav.settings}
-          </Tab>
-        </TabList>
-      </nav>
+    <div className="shell">
+      <NavPane page={page} onPage={setPage} collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
       <main className="content">
         <div className="page-col">
           <header className="page-header">

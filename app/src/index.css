@@ -39,13 +39,71 @@ body {
   height: 100%;
 }
 
+/* WinUI NavigationView: expanded pane or 48px icon rail */
 .nav {
-  width: 232px;
+  width: 240px;
   flex: none;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 4px;
   padding: 4px 4px 8px;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: width 150ms cubic-bezier(0, 0, 0, 1);
+}
+.nav.collapsed {
+  width: 48px;
+}
+.nav-item {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--colorNeutralForeground1);
+  font-family: var(--fontFamilyBase);
+  font-size: var(--fontSizeBase300);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.nav-item:hover {
+  background: var(--colorSubtleBackgroundHover);
+}
+.nav-item:active {
+  background: var(--colorSubtleBackgroundPressed);
+  color: var(--colorNeutralForeground2);
+}
+.nav-item[aria-current="page"] {
+  background: var(--colorSubtleBackgroundSelected);
+}
+.nav-item[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--colorCompoundBrandBackground);
+}
+.nav-item:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+  outline-offset: -2px;
+}
+.nav-toggle {
+  width: 40px;
+  margin-bottom: 4px;
+}
+.nav-icon {
+  display: flex;
+  flex: none;
+  font-size: 20px;
 }
 
 .content {
@@ -270,28 +328,7 @@ body {
   white-space: nowrap;
 }
 
-/* WinUI NavigationView goes icon-only when space is short */
-.shell.compact .nav {
-  width: 56px;
-}
-.shell.compact .nav :is(.fui-Tab__content, .fui-Tab__content--reserved-space) {
-  display: none;
-}
-@media (max-width: 1007px) {
-  .nav {
-    width: 56px;
-  }
-  .nav :is(.fui-Tab__content, .fui-Tab__content--reserved-space) {
-    display: none;
-  }
-}
-
 .card-logo {
   width: 32px;
   height: 32px;
-}
-
-/* orange stays on the selection pill only, like WinUI */
-.nav .fui-Tab[aria-selected="true"] .fui-Tab__icon {
-  color: var(--colorNeutralForeground1);
 }
