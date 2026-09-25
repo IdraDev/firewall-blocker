@@ -2,6 +2,7 @@
 
 use crate::fw::Com;
 use std::path::Path;
+use std::sync::Mutex;
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
 use windows::Win32::System::Com::COINIT_APARTMENTTHREADED;
@@ -80,8 +81,11 @@ fn encode(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
     Some(out)
 }
 
-// Missing programs (orphaned rules) get the generic .exe icon.
+// Missing programs (orphaned rules) get the generic .exe icon. Serialized:
+// SHGetFileInfo fails for a good share of calls when many threads race.
 pub fn png(path: &str) -> Option<Vec<u8>> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _com = Com::init(COINIT_APARTMENTTHREADED);
     let flags = if Path::new(path).exists() { SHGFI_FLAGS(0) } else { SHGFI_USEFILEATTRIBUTES };
     let mut info = SHFILEINFOW::default();

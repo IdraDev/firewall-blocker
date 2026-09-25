@@ -16,8 +16,9 @@ body {
   display: none !important;
 }
 
-/* WinUI layer/card fills over Mica */
-.app {
+/* WinUI layer/card fills over Mica. Fluent portal nodes copy the provider's
+   className, so layout goes on the root only or they cover the UI. */
+#root > .app {
   height: 100%;
   background: transparent !important;
 }

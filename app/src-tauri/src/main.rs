@@ -134,7 +134,7 @@ fn main() {
             let path = icon::decode(req.uri().path().trim_start_matches('/'));
             std::thread::spawn(move || {
                 let res = match icon::png(&path) {
-                    Some(png) => Response::builder().header("Content-Type", "image/png").body(png),
+                    Some(png) => Response::builder().header("Content-Type", "image/png").header("Cache-Control", "max-age=3600").body(png),
                     None => Response::builder().status(404).body(Vec::new()),
                 };
                 responder.respond(res.expect("static response"));

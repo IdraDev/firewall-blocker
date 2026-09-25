@@ -13,6 +13,7 @@ import {
   Tab,
   TabList,
 } from "@fluentui/react-components";
+import { AppGenericRegular } from "@fluentui/react-icons";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { iconUrl } from "./api";
 import { t } from "./i18n";
@@ -29,7 +30,9 @@ export function EmptyState({ icon, title, body }: { icon: ReactNode; title: stri
 
 // Real shell icon of the program, lazy-loaded from the icon:// protocol.
 export function ProgramIcon({ path }: { path: string }) {
-  return <img className="program-icon" src={iconUrl(path)} alt="" loading="lazy" draggable={false} />;
+  const [failed, setFailed] = useState(false);
+  if (failed) return <AppGenericRegular className="program-icon" />;
+  return <img className="program-icon" src={iconUrl(path)} alt="" loading="lazy" draggable={false} onError={() => setFailed(true)} />;
 }
 
 // WinUI SelectorBar: one tab per status with its count.
