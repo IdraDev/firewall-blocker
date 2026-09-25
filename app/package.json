@@ -1,6 +1,6 @@
 {
   "name": "firewall-blocker",
-  "version": "2.1.1",
+  "version": "2.1.0",
   "description": "Block/unblock Windows Firewall rules for .exe files in a folder",
   "private": true,
   "type": "module",
