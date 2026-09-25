@@ -1,65 +1,287 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  color-scheme: dark;
-}
-
 html,
 body,
 #root {
   height: 100%;
-  width: 100%;
+  margin: 0;
 }
 
 body {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  user-select: none;
+  background: transparent;
   overflow: hidden;
-  background:
-    radial-gradient(1100px 600px at 80% -10%, rgba(255, 91, 60, 0.10), transparent 60%),
-    radial-gradient(900px 600px at -10% 110%, rgba(80, 110, 220, 0.08), transparent 60%),
-    #070809;
+  user-select: none;
+  cursor: default;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* WinUI layer/card fills over Mica */
+.app {
+  height: 100%;
+  background: transparent !important;
+}
+.app.light {
+  --layer: rgba(255, 255, 255, 0.5);
+  --card: rgba(255, 255, 255, 0.7);
+  --stroke: rgba(0, 0, 0, 0.0578);
+  --sticky: rgba(251, 251, 251, 0.92);
+}
+.app.dark {
+  --layer: rgba(58, 58, 58, 0.3);
+  --card: rgba(255, 255, 255, 0.0512);
+  --stroke: rgba(0, 0, 0, 0.2);
+  --sticky: rgba(46, 46, 46, 0.92);
+}
+
+.shell {
+  display: flex;
+  height: 100%;
+}
+
+.nav {
+  width: 232px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px 4px 8px;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  background: var(--layer);
+  border: 1px solid var(--stroke);
+  border-right: 0;
+  border-bottom: 0;
+  border-top-left-radius: 8px;
+}
+
+.page-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 24px 12px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.notices:empty {
+  display: none;
+}
+
+.page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.toolbar .grow {
+  min-width: 180px;
+}
+
+.muted {
+  color: var(--colorNeutralForeground3);
+}
+
+.mono {
+  font-family: var(--fontFamilyMonospace);
+}
+
+.path {
+  user-select: text;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+}
+
+/* columns keep their width; the list scrolls sideways when the window is narrow */
+.table {
+  min-width: 640px;
+}
+
+.thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--sticky);
+  backdrop-filter: blur(20px);
+}
+
+/* skips layout and paint for rows off screen: big folders stay smooth */
+.row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
+}
+
+.inline-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.no-match {
+  display: block;
+  padding: 16px;
+  text-align: center;
+}
+
+.empty {
+  height: 100%;
+  box-sizing: border-box;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.empty-icon {
+  display: flex;
+  font-size: 48px;
+  color: var(--colorBrandForeground1);
+}
+
+.opbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+}
+.opbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.failures {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-family: var(--fontFamilyMonospace);
+  font-size: 12px;
+  user-select: text;
+}
+
+.activity {
+  width: 340px;
+  background: transparent;
+}
+.log-line {
+  padding: 2px 0;
+  font-family: var(--fontFamilyMonospace);
+  font-size: 12px;
+  word-break: break-word;
+  user-select: text;
+}
+.log-line.error {
+  color: var(--colorStatusDangerForeground1);
+}
+.log-line.success {
+  color: var(--colorStatusSuccessForeground1);
+}
+
+.settings {
+  overflow: auto;
+  gap: 4px;
+}
+.section {
+  margin: 16px 0 4px;
+}
+.section:first-child {
+  margin-top: 0;
+}
+.card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+}
+.card-icon {
+  display: flex;
+  font-size: 20px;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #262b34;
-  border-radius: 999px;
+  border: 4px solid transparent;
+  border-radius: 6px;
+  background: var(--colorNeutralStroke1Hover) content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a414d;
+  border-width: 3px;
 }
 
-.titlebar-drag {
-  -webkit-app-region: drag;
-}
-.titlebar-nodrag {
-  -webkit-app-region: no-drag;
+.num {
+  font-variant-numeric: tabular-nums;
 }
 
-@keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+/* long paths: one line, ellipsis, full path in the row tooltip */
+.row .fui-TableCellLayout__content {
+  min-width: 0;
 }
-.shimmer {
-  background: linear-gradient(90deg, #1b1f26 0%, #262b34 50%, #1b1f26 100%);
-  background-size: 800px 100%;
-  animation: shimmer 1.4s linear infinite;
+.row .fui-TableCellLayout__description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.glass {
-  background: rgba(19, 22, 27, 0.7);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+/* WinUI NavigationView goes icon-only when space is short */
+.shell.compact .nav {
+  width: 56px;
+}
+.shell.compact .nav :is(.fui-Tab__content, .fui-Tab__content--reserved-space) {
+  display: none;
+}
+@media (max-width: 1007px) {
+  .nav {
+    width: 56px;
+  }
+  .nav :is(.fui-Tab__content, .fui-Tab__content--reserved-space) {
+    display: none;
+  }
 }

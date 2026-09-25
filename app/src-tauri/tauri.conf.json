@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Firewall Blocker",
+  "mainBinaryName": "FirewallBlocker",
+  "version": "../package.json",
+  "identifier": "net.idragraphics.firewallblocker",
+  "build": {
+    "beforeDevCommand": "bun run web:dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "bun run web:build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Firewall Blocker",
+        "width": 1100,
+        "height": 760,
+        "minWidth": 760,
+        "minHeight": 520,
+        "transparent": true,
+        "windowEffects": { "effects": ["mica"] }
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.ico"]
+  }
+}

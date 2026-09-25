@@ -2,70 +2,32 @@
   "name": "firewall-blocker",
   "version": "2.0.0",
   "description": "Block/unblock Windows Firewall rules for .exe files in a folder",
-  "main": "dist-electron/main.js",
+  "private": true,
+  "type": "module",
   "author": "IdraDev",
   "license": "MIT",
   "scripts": {
-    "dev": "concurrently -k \"bun run dev:vite\" \"bun run dev:electron\"",
-    "dev:vite": "vite",
-    "dev:electron": "wait-on tcp:5173 && tsc -p electron/tsconfig.json && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
-    "build:renderer": "vite build",
-    "build:main": "tsc -p electron/tsconfig.json",
-    "build": "bun run build:renderer && bun run build:main",
-    "dist": "bun run build && electron-builder --win portable",
-    "dist:dir": "bun run build && electron-builder --win portable --dir",
-    "typecheck": "tsc -p tsconfig.json && tsc -p electron/tsconfig.json --noEmit"
+    "dev": "tauri dev",
+    "web:dev": "vite",
+    "web:build": "vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "dist": "tauri build --no-bundle && bun -e \"const fs=require('fs');const v=require('./package.json').version;fs.mkdirSync('release',{recursive:true});fs.copyFileSync('src-tauri/target/release/FirewallBlocker.exe','release/FirewallBlocker-'+v+'-portable.exe')\""
+  },
+  "dependencies": {
+    "@fluentui/react-components": "^9.72.0",
+    "@fluentui/react-icons": "^2.0.300",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/node": "^22.9.0",
+    "@tauri-apps/cli": "^2.8.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
-    "autoprefixer": "^10.4.20",
-    "concurrently": "^9.1.0",
-    "cross-env": "^7.0.3",
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "lucide-react": "^0.460.0",
-    "postcss": "^8.4.49",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tailwindcss": "^3.4.15",
     "typescript": "^5.7.2",
-    "vite": "^5.4.11",
-    "wait-on": "^8.0.1"
-  },
-  "build": {
-    "appId": "net.idragraphics.firewallblocker",
-    "productName": "Firewall Blocker",
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "../script/lib/engine.ps1",
-        "to": "engine.ps1"
-      }
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "portable",
-          "arch": ["x64"]
-        }
-      ],
-      "icon": "build/icon.ico",
-      "requestedExecutionLevel": "requireAdministrator"
-    },
-    "portable": {
-      "artifactName": "FirewallBlocker-${version}-portable.exe"
-    },
-    "asar": true
+    "vite": "^5.4.11"
   }
 }
