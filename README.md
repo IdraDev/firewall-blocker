@@ -1,6 +1,6 @@
 # 🔥 Firewall Blocker (v2.0)
 
-Block or unblock every `.exe` in a directory tree with Windows Firewall rules. Use the desktop app, the interactive terminal UI, or the scriptable CLI: all three share one engine and see the same rules. Built for sysadmins and power users who need control without the bloat.
+Block or unblock every `.exe` in a directory tree with Windows Firewall rules. Use the desktop app, the interactive terminal UI, or the scriptable CLI: all three work on the same rules. Built for sysadmins and power users who need control without the bloat.
 
 ---
 
@@ -8,7 +8,7 @@ Block or unblock every `.exe` in a directory tree with Windows Firewall rules. U
 
 - 🔐 Block all `.exe` files (inbound and outbound) in a target directory and its subdirectories.
 - ♻️ Unblock by file, by directory, or remove everything the tool created. Works even after the folder was deleted (orphaned rules are cleaned up too).
-- 🪟 Desktop app: pick a folder, filter, select, block or unblock with one click, live activity log.
+- 🪟 Desktop app in the Windows 11 style (Fluent, Mica, light/dark, English/Italian): scan a folder and see each exe's status, block or unblock with a preview of the exact rule count, browse every rule, spot orphans of deleted programs, stop a long run halfway, activity log. Reopens the last folder.
 - 🖥️ Terminal UI: arrow-key menus, live progress bar, per-file audit view (`blocked / partial / none`), rules browser with pagination.
 - 🤖 CLI mode for scripts and scheduled tasks: `-Action Block|Unblock|List|Rules` with `-Path`, `-NoConfirm`, `-DryRun`.
 - 🔍 Dry-run everywhere in the script: preview exactly what would be created or removed without touching the firewall (no admin needed).
@@ -21,7 +21,7 @@ Block or unblock every `.exe` in a directory tree with Windows Firewall rules. U
 
 ## ⚙️ Requirements
 
-- Windows 10/11 with Windows PowerShell 5.1 (preinstalled).
+- Windows 10/11 with Windows PowerShell 5.1 (preinstalled). The app also needs WebView2, preinstalled on Windows 11.
 - Administrator privileges for blocking/unblocking (the app and `start.bat` ask for them; `List`, `Rules` and `-DryRun` work without).
 - Sane judgment: this can break stuff.
 
@@ -40,7 +40,7 @@ Grab the latest build from [Releases](https://github.com/IdraDev/Simple-Firewall
 
 ### Option 1: desktop app
 
-Run `FirewallBlocker-<version>-portable.exe` and accept the administrator prompt. With nothing selected, Block and Unblock apply to every file the filter shows.
+Run `FirewallBlocker-<version>-portable.exe` and accept the administrator prompt. With nothing selected, Block, Unblock and Remove apply to everything the filter shows: filter the Rules page by a deleted folder's path to clean up its orphans.
 
 ### Option 2: start.bat
 
@@ -84,14 +84,18 @@ powershell -ExecutionPolicy Bypass -File .\script\script.ps1
 # engine self-check, no admin needed
 powershell -NoProfile -ExecutionPolicy Bypass -File .\script\tests\engine.tests.ps1
 
-# desktop app (needs Bun): output in app\release
+# desktop app (needs Bun, Rust and the Visual Studio C++ Build Tools): output in app\release
 cd app
 bun install
 bun run typecheck
+bun run test
 bun run dist
+
+# live development window (runs unelevated: blocking is disabled)
+bun run dev
 ```
 
-The app bundles `script\lib\engine.ps1`, the same engine the script uses.
+The app (Tauri) talks to Windows Firewall over COM (`app\src-tauri\src\fw.rs`). It names and matches rules exactly like `script\lib\engine.ps1`, by program path and direction, so the app and the script see each other's rules. The elevated round trip test needs an admin shell: `cargo test -- --ignored` in `app\src-tauri`.
 
 ---
 
