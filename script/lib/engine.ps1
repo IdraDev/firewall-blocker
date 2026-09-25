@@ -54,6 +54,15 @@ function Get-RuleKey {
     "$Program|$Direction"
 }
 
+# 'active' | 'paused' (group rule disabled) | 'none', against Get-FwbRules
+function Get-RuleState {
+    param([hashtable]$Existing, [string]$Program, [string]$Direction)
+    $r = $Existing[(Get-RuleKey $Program $Direction)]
+    if (-not $r) { return 'none' }
+    if ([string]$r.Enabled -eq 'True') { return 'active' }
+    return 'paused'
+}
+
 #endregion
 
 #region Engine (no UI in this region)
@@ -78,7 +87,9 @@ function Get-FwbRules {
     $index = @{}
     foreach ($r in $map.Rules) {
         $prog = $map.Programs[$r.Name]
-        if ($prog) { $index[(Get-RuleKey $prog ([string]$r.Direction))] = $r }
+        $k = Get-RuleKey $prog ([string]$r.Direction)
+        # an enabled duplicate wins, so the direction reads as active
+        if ($prog -and (-not $index.ContainsKey($k) -or [string]$r.Enabled -eq 'True')) { $index[$k] = $r }
     }
     return $index
 }
@@ -117,8 +128,18 @@ function Invoke-BlockRules {
             $op++
             if ($direction -eq 'Inbound') { $dirShort = 'In' } else { $dirShort = 'Out' }
             $name = "FWB_${hash}_$dirShort"
-            if ($Existing.ContainsKey((Get-RuleKey $file.FullName $direction))) {
+            $state = Get-RuleState $Existing $file.FullName $direction
+            if ($state -eq 'active') {
                 $outcome = 'Skipped'; $detail = 'already exists'
+            } elseif ($state -eq 'paused' -and $DryRun) {
+                $outcome = 'DryRun'; $detail = 'would enable'
+            } elseif ($state -eq 'paused') {
+                try {
+                    $Existing[(Get-RuleKey $file.FullName $direction)] | Enable-NetFirewallRule -ErrorAction Stop
+                    $outcome = 'Enabled'; $detail = ''
+                } catch {
+                    $outcome = 'Failed'; $detail = $_.Exception.Message
+                }
             } elseif ($DryRun) {
                 $outcome = 'DryRun'; $detail = 'would create'
             } else {
@@ -156,17 +177,30 @@ function Get-LegacyRules {
 }
 
 # Blocked directions per program path, group and legacy rules alike:
-# path -> @{ Inbound = bool; Outbound = bool }, case-insensitive keys.
+# path -> @{ Inbound; Outbound; Paused }, case-insensitive keys. Disabled
+# rules (paused in the desktop app) block nothing, they only set Paused.
 function Get-BlockedDirections {
     $map = Get-RuleProgramMap
     $index = @{}
     foreach ($r in @($map.Rules) + @(Get-LegacyRules)) {
         $prog = $map.Programs[$r.Name]
         if (-not $prog) { continue }
-        if (-not $index.ContainsKey($prog)) { $index[$prog] = @{ Inbound = $false; Outbound = $false } }
-        $index[$prog][[string]$r.Direction] = $true
+        if (-not $index.ContainsKey($prog)) { $index[$prog] = @{ Inbound = $false; Outbound = $false; Paused = $false } }
+        if ([string]$r.Enabled -eq 'True') { $index[$prog][[string]$r.Direction] = $true }
+        else { $index[$prog].Paused = $true }
     }
     return $index
+}
+
+# 'blocked' | 'partial (in only)' | 'partial (out only)' | 'paused' | 'none'
+function Get-FileStatus {
+    param([hashtable]$Directions, [string]$Path)
+    $d = $Directions[$Path]
+    if (-not $d) { return 'none' }
+    if ($d.Inbound -and $d.Outbound) { return 'blocked' }
+    if ($d.Inbound) { return 'partial (in only)' }
+    if ($d.Outbound) { return 'partial (out only)' }
+    return 'paused'
 }
 
 # Select the rules an unblock will remove, matched on the rule's stored

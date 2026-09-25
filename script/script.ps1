@@ -110,11 +110,13 @@ function Show-BlockPreview {
     $rail = "  $($script:G.Rail)  "
     $full = 0; $part = 0; $none = 0; $ops = 0
     foreach ($f in $Files) {
-        $hasIn = $Existing.ContainsKey((Get-RuleKey $f.FullName 'Inbound'))
-        $hasOut = $Existing.ContainsKey((Get-RuleKey $f.FullName 'Outbound'))
-        if ($hasIn -and $hasOut) { $full++ }
-        elseif ($hasIn -or $hasOut) { $part++; $ops++ }
-        else { $none++; $ops += 2 }
+        $in = Get-RuleState $Existing $f.FullName 'Inbound'
+        $out = Get-RuleState $Existing $f.FullName 'Outbound'
+        $fix = @(@($in, $out) | Where-Object { $_ -ne 'active' }).Count
+        if ($fix -eq 0) { $full++ }
+        elseif ($in -eq 'none' -and $out -eq 'none') { $none++ }
+        else { $part++ }
+        $ops += $fix
     }
     Write-Seg @(@("  $($script:G.Ok) ", 'Ok'), @("$($Files.Count) .exe files found", 'Strong'))
     Write-Seg @(@($rail, 'Muted'), @(('{0,5}' -f $none), 'Strong'),
@@ -124,8 +126,8 @@ function Show-BlockPreview {
                 @(' already fully blocked'.PadRight(26), 'Text'),
                 @('will skip', 'Muted'))
     Write-Seg @(@($rail, 'Muted'), @(('{0,5}' -f $part), 'Strong'),
-                @(' partially blocked'.PadRight(26), 'Text'),
-                @('missing direction will be added', 'Muted'))
+                @(' partially blocked/paused'.PadRight(26), 'Text'),
+                @('missing or paused directions fixed', 'Muted'))
     Write-Seg @(@($rail, 'Muted'), @('', 'Muted'))
     # one-line sample, ellipsized with +N more
     $maxLen = $script:Tui.Width - 10
@@ -260,6 +262,7 @@ function Show-Summary {
         [bool]$IsDryRun
     )
     $created = @($Results | Where-Object { $_.Outcome -eq 'Created' }).Count
+    $enabled = @($Results | Where-Object { $_.Outcome -eq 'Enabled' }).Count
     $removed = @($Results | Where-Object { $_.Outcome -eq 'Removed' }).Count
     $skipped = @($Results | Where-Object { $_.Outcome -eq 'Skipped' }).Count
     $dry     = @($Results | Where-Object { $_.Outcome -eq 'DryRun' }).Count
@@ -275,7 +278,7 @@ function Show-Summary {
     Write-Host ''
     if ($IsDryRun) {
         if ($Mode -eq 'Block') {
-            Write-CountRow $dry 'rules would be created' ''
+            Write-CountRow $dry 'rules would be created' 'or re-enabled'
             Write-CountRow $skipped 'already exist' 'would skip'
         } else {
             Write-CountRow $dry 'rules would be removed' ''
@@ -283,6 +286,7 @@ function Show-Summary {
     } else {
         if ($Mode -eq 'Block') {
             Write-CountRow $created 'rules created' ''
+            Write-CountRow $enabled 're-enabled' 'were paused'
             Write-CountRow $skipped 'skipped' 'already existed'
         } else {
             Write-CountRow $removed 'rules removed' ''
@@ -387,18 +391,18 @@ function Show-FileList {
     if ($fileW -lt 16) { $fileW = 16 }
     $whereW = $w - $statW - $fileW - 16
     if ($whereW -lt 10) { $whereW = 10 }
-    $blocked = 0; $none = 0; $part = 0
+    $blocked = 0; $none = 0; $part = 0; $paused = 0
     $rows = @()
     foreach ($f in $files) {
-        $d = $dirs[$f.FullName]
-        $hasIn = $d -and $d.Inbound
-        $hasOut = $d -and $d.Outbound
+        $status = Get-FileStatus $dirs $f.FullName
         $extra = ''
-        if ($hasIn -and $hasOut) {
+        if ($status -eq 'blocked') {
             $lab = "$($script:G.Ok) blocked"; $tok = 'Ok'; $blocked++
-        } elseif ($hasIn -or $hasOut) {
+        } elseif ($status -like 'partial*') {
             $lab = "$($script:G.Warn) partial"; $tok = 'Warn'; $part++
-            if ($hasIn) { $extra = 'in only' } else { $extra = 'out only' }
+            $extra = $status.Substring(9).TrimEnd(')')
+        } elseif ($status -eq 'paused') {
+            $lab = "$b paused"; $tok = 'Warn'; $paused++
         } else {
             $lab = "$b none"; $tok = 'Muted'; $none++
         }
@@ -424,6 +428,7 @@ function Show-FileList {
         @("  $($script:G.Ok) ", 'Ok'), @("$blocked blocked", 'Strong'),
         @(" $b ", 'Muted'), @("$none none", 'Strong'),
         @(" $b ", 'Muted'), @("$part partial", 'Strong'),
+        @(" $b ", 'Muted'), @("$paused paused", 'Strong'),
         @(("    $($script:G.Up)$($script:G.Down) line $b pgup/pgdn page $b esc back"), 'Muted')
     )
     Show-Pager -DrawTop $drawTop -RowSegs $rows -FooterSegs $footer

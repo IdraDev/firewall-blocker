@@ -7,6 +7,7 @@ function Write-CliOp {
     elseif ([string]$r.Direction -eq 'Outbound') { $ds = 'Out' }
     switch ($r.Outcome) {
         'Created' { Write-Host "[ OK ] created  $ds  $($r.File)" -ForegroundColor Green }
+        'Enabled' { Write-Host "[ OK ] enabled  $ds  $($r.File)  (was paused)" -ForegroundColor Green }
         'Removed' {
             $suffix = ''
             if ($r.Detail -eq 'legacy v1 rule') { $suffix = ' (legacy v1 rule)' }
@@ -17,6 +18,8 @@ function Write-CliOp {
         'DryRun'  {
             if ($r.Detail -eq 'would remove' -or $r.Detail -eq 'legacy v1 rule') {
                 Write-Host "[ DRY] would remove  $ds  $($r.File)" -ForegroundColor Yellow
+            } elseif ($r.Detail -eq 'would enable') {
+                Write-Host "[ DRY] would enable  $ds  $($r.File)" -ForegroundColor Yellow
             } else {
                 Write-Host "[ DRY] would create  $ds  $($r.File)" -ForegroundColor Yellow
             }
@@ -82,14 +85,15 @@ function Invoke-CliMode {
             $results = @(Invoke-BlockRules -Files $files -Existing $existing -DryRun ([bool]$DryRun) -OnProgress $cliProgress)
             $secs = '{0:0.0}s' -f $sw.Elapsed.TotalSeconds
             $created = @($results | Where-Object { $_.Outcome -eq 'Created' }).Count
+            $enabled = @($results | Where-Object { $_.Outcome -eq 'Enabled' }).Count
             $skipped = @($results | Where-Object { $_.Outcome -eq 'Skipped' }).Count
             $failed  = @($results | Where-Object { $_.Outcome -eq 'Failed' }).Count
             $dry     = @($results | Where-Object { $_.Outcome -eq 'DryRun' }).Count
             if ($DryRun) {
-                Write-Host "[INFO] dry run: $dry rules would be created, $skipped already exist ($secs)"
+                Write-Host "[INFO] dry run: $dry rules would be created or re-enabled, $skipped already exist ($secs)"
                 exit 0
             }
-            Write-Host "[INFO] done: $created created, $skipped skipped, $failed failed ($secs)"
+            Write-Host "[INFO] done: $created created, $enabled re-enabled, $skipped skipped, $failed failed ($secs)"
             if ($failed -gt 0) { exit 1 }
             exit 0
         }
@@ -142,13 +146,7 @@ function Invoke-CliMode {
             }
             $dirs = Get-BlockedDirections
             foreach ($f in $files) {
-                $d = $dirs[$f.FullName]
-                $hasIn = $d -and $d.Inbound
-                $hasOut = $d -and $d.Outbound
-                if ($hasIn -and $hasOut) { $status = 'blocked' }
-                elseif ($hasIn) { $status = 'partial (in only)' }
-                elseif ($hasOut) { $status = 'partial (out only)' }
-                else { $status = 'none' }
+                $status = Get-FileStatus $dirs $f.FullName
                 Write-Host ('[INFO] {0,-18} {1}' -f $status, $f.FullName)
             }
             Write-Host "[INFO] $($files.Count) .exe files under $dir"

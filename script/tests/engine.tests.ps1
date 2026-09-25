@@ -35,19 +35,20 @@ try {
     function Get-RuleProgramMap {
         [pscustomobject]@{
             Rules    = @(
-                [pscustomobject]@{ Name = 'r1'; Group = 'FirewallBlocker'; Direction = 'Inbound' }
-                [pscustomobject]@{ Name = 'r2'; Group = 'FirewallBlocker'; Direction = 'Outbound' }
-                [pscustomobject]@{ Name = 'r3'; Group = 'FirewallBlocker'; Direction = 'Inbound' })
-            Programs = @{ r1 = 'C:\Games\a.exe'; r2 = 'C:\Games\a.exe'; r3 = 'C:\Gamesx\b.exe'; l1 = 'C:\Games\sub\c.exe' }
+                [pscustomobject]@{ Name = 'r1'; Group = 'FirewallBlocker'; Direction = 'Inbound'; Enabled = 'True' }
+                [pscustomobject]@{ Name = 'r2'; Group = 'FirewallBlocker'; Direction = 'Outbound'; Enabled = 'True' }
+                [pscustomobject]@{ Name = 'r3'; Group = 'FirewallBlocker'; Direction = 'Inbound'; Enabled = 'True' }
+                [pscustomobject]@{ Name = 'r4'; Group = 'FirewallBlocker'; Direction = 'Inbound'; Enabled = 'False' })
+            Programs = @{ r1 = 'C:\Games\a.exe'; r2 = 'C:\Games\a.exe'; r3 = 'C:\Gamesx\b.exe'; r4 = 'C:\Paused\p.exe'; l1 = 'C:\Games\sub\c.exe' }
         }
     }
-    function Get-LegacyRules { [pscustomobject]@{ Name = 'l1'; Group = ''; Direction = 'Outbound' } }
+    function Get-LegacyRules { [pscustomobject]@{ Name = 'l1'; Group = ''; Direction = 'Outbound'; Enabled = 'True' } }
 
     $t = @(Get-UnblockTargets -Scope Directory -Directory 'C:\Games\')
     Check 'directory scope: subtree + legacy, sibling folder spared' ((Names $t) -eq 'r1,r2,l1')
     Check 'directory scope: legacy flagged' ((Names @($t | Where-Object Legacy)) -eq 'l1')
     Check 'files scope: exact path, any case' ((Names @(Get-UnblockTargets -Scope Files -Files 'c:\games\A.EXE')) -eq 'r1,r2')
-    Check 'all scope: group rules only' ((Names @(Get-UnblockTargets -Scope All)) -eq 'r1,r2,r3')
+    Check 'all scope: group rules only' ((Names @(Get-UnblockTargets -Scope All)) -eq 'r1,r2,r3,r4')
 
     # GUID-named rules (created by the app over COM) must count as existing
     $e = Get-FwbRules
@@ -58,10 +59,15 @@ try {
                [pscustomobject]@{ FullName = 'C:\Gamesx\b.exe'; Name = 'b.exe' })
     $plan = @(Invoke-BlockRules -Files $files -Existing $e -DryRun $true | ForEach-Object Outcome)
     Check 'block: existing directions skipped' (($plan -join ',') -eq 'Skipped,Skipped,Skipped,DryRun')
+    $paused = @(Invoke-BlockRules -Files @([pscustomobject]@{ FullName = 'C:\Paused\p.exe'; Name = 'p.exe' }) -Existing $e -DryRun $true)
+    Check 'block: paused direction re-enabled, missing one created' (
+        (($paused | ForEach-Object Detail) -join ',') -eq 'would enable,would create')
 
     $d = Get-BlockedDirections
-    Check 'status: both directions blocked' ($d['C:\GAMES\A.EXE'].Inbound -and $d['C:\GAMES\A.EXE'].Outbound)
-    Check 'status: legacy rule counts' (-not $d['C:\Games\sub\c.exe'].Inbound -and $d['C:\Games\sub\c.exe'].Outbound)
+    Check 'status: both directions blocked' ((Get-FileStatus $d 'C:\GAMES\A.EXE') -eq 'blocked')
+    Check 'status: legacy rule counts' ((Get-FileStatus $d 'C:\Games\sub\c.exe') -eq 'partial (out only)')
+    Check 'status: disabled rules read as paused' ((Get-FileStatus $d 'C:\Paused\p.exe') -eq 'paused')
+    Check 'status: no rules' ((Get-FileStatus $d 'C:\Nope\x.exe') -eq 'none')
 } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force
 }
