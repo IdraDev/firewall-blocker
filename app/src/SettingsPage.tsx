@@ -54,8 +54,12 @@ export function SettingsPage(p: { hidden: boolean; setting: ThemeSetting; onSett
       </SettingCard>
 
       <Subtitle2 className="section">{t.settings.status}</Subtitle2>
-      <SettingCard icon={<PersonKeyRegular />} title={t.settings.admin} hint={t.settings.adminHint}>
-        <YesNo ok={env?.admin} yes={t.settings.yes} no={t.settings.no} />
+      <SettingCard icon={<PersonKeyRegular />} title={t.settings.consent} hint={t.settings.consentHint}>
+        {env && (
+          <Badge appearance="tint" color={env.admin || env.helper ? "success" : "informative"}>
+            {env.admin ? t.settings.appAdmin : env.helper ? t.settings.granted : t.settings.notYet}
+          </Badge>
+        )}
       </SettingCard>
       <SettingCard icon={<ShieldGlobeRegular />} title={t.settings.firewall} hint={t.settings.firewallHint}>
         <YesNo ok={env?.firewallRunning} yes={t.settings.running} no={t.settings.stopped} />

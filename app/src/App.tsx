@@ -4,21 +4,25 @@ import {
   FluentProvider,
   MessageBar,
   MessageBarBody,
+  Subtitle1,
   Title2,
   ToggleButton,
   type BrandVariants,
   type Theme,
 } from "@fluentui/react-components";
-import { HistoryRegular } from "@fluentui/react-icons";
+import { ArrowDownloadRegular, HistoryRegular } from "@fluentui/react-icons";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useState } from "react";
-import { FolderPage } from "./FolderPage";
+import { ProgramsPage } from "./ProgramsPage";
 import { t } from "./i18n";
 import { NavPane, type Page } from "./Nav";
 import { OpsProvider, useOps } from "./ops";
 import { ActivityPanel, OperationBar, SummaryBar } from "./OpStatus";
 import { RulesPage } from "./RulesPage";
 import { SettingsPage, type ThemeSetting } from "./SettingsPage";
+import { useSources } from "./sources";
+import { useStable } from "./ui";
 
 // Flame orange #FF5B3C at 100; 70/80 darkened so white text on brand passes 4.5:1.
 const flame: BrandVariants = {
@@ -86,11 +90,28 @@ function Shell({ setting, onSetting }: { setting: ThemeSetting; onSetting: (s: T
   const [page, setPage] = useState<Page>("folder");
   const [logOpen, setLogOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("navCollapsed") === "1");
+  const [dragging, setDragging] = useState(false);
   const { env } = useOps();
+  const sources = useSources();
 
   useEffect(() => {
     localStorage.setItem("navCollapsed", collapsed ? "1" : "0");
   }, [collapsed]);
+
+  const drop = useStable((paths: string[]) => {
+    setPage("folder");
+    sources.add(paths);
+  });
+
+  // the window is the drop target: works because the app is not elevated
+  useEffect(() => {
+    const off = getCurrentWebview().onDragDropEvent(({ payload: p }) => {
+      if (p.type === "enter" || p.type === "over") setDragging(true);
+      else setDragging(false);
+      if (p.type === "drop") drop(p.paths);
+    });
+    return () => void off.then((f) => f());
+  }, []);
 
   return (
     <div className="shell">
@@ -104,11 +125,6 @@ function Shell({ setting, onSetting }: { setting: ThemeSetting; onSetting: (s: T
             </ToggleButton>
           </header>
           <div className="notices">
-            {env && !env.admin && (
-              <MessageBar intent="error">
-                <MessageBarBody>{t.banner.notAdmin}</MessageBarBody>
-              </MessageBar>
-            )}
             {env && !env.firewallRunning && (
               <MessageBar intent="error">
                 <MessageBarBody>{t.banner.firewallOff}</MessageBarBody>
@@ -117,11 +133,17 @@ function Shell({ setting, onSetting }: { setting: ThemeSetting; onSetting: (s: T
             <OperationBar />
             <SummaryBar />
           </div>
-          <FolderPage hidden={page !== "folder"} />
+          <ProgramsPage hidden={page !== "folder"} sources={sources} />
           <RulesPage hidden={page !== "rules"} />
           <SettingsPage hidden={page !== "settings"} setting={setting} onSetting={onSetting} />
         </div>
         <ActivityPanel open={logOpen} onClose={() => setLogOpen(false)} />
+        {dragging && (
+          <div className="drop-overlay">
+            <ArrowDownloadRegular className="drop-icon" />
+            <Subtitle1>{t.programs.dropNow}</Subtitle1>
+          </div>
+        )}
       </main>
     </div>
   );

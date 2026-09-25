@@ -107,6 +107,7 @@ body {
 }
 
 .content {
+  position: relative;
   flex: 1;
   min-width: 0;
   display: flex;
@@ -172,9 +173,6 @@ body {
   font-family: var(--fontFamilyMonospace);
 }
 
-.path {
-  user-select: text;
-}
 
 .list {
   flex: 1;
@@ -331,4 +329,85 @@ body {
 .card-logo {
   width: 32px;
   height: 32px;
+}
+
+.program-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* row actions show on hover or keyboard focus, like Explorer */
+.row-actions {
+  opacity: 0;
+}
+.row:hover .row-actions,
+.row:focus-within .row-actions {
+  opacity: 1;
+}
+
+.home {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drop-zone {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--card);
+  border: 2px dashed var(--colorNeutralStroke1);
+  border-radius: 8px;
+}
+.drop-zone .toolbar {
+  justify-content: center;
+  margin-top: 8px;
+}
+.drop-icon {
+  font-size: 48px;
+  color: var(--colorNeutralForeground3);
+}
+.recent {
+  width: 100%;
+  min-height: 60px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+.recent:hover:enabled {
+  background: var(--colorSubtleBackgroundHover);
+}
+.recent:focus-visible {
+  outline: 2px solid var(--colorStrokeFocus2);
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 12px;
+  z-index: 10;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background: var(--sticky);
+  backdrop-filter: blur(12px);
+  border: 2px dashed var(--colorCompoundBrandStroke);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.dialog-choices {
+  margin-bottom: 8px;
 }

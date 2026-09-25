@@ -2,16 +2,15 @@
 // same group, display names and legacy v1 detection, rules matched on
 // program + direction.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use windows::core::{Interface, Result, BSTR};
-use windows::Win32::Foundation::VARIANT_TRUE;
+use windows::Win32::Foundation::{VARIANT_FALSE, VARIANT_TRUE};
 use windows::Win32::NetworkManagement::WindowsFirewall::*;
 use windows::Win32::System::Com::*;
 use windows::Win32::System::Ole::IEnumVARIANT;
-use windows::Win32::System::Variant::{VariantClear, VARIANT};
+use windows::Win32::System::Variant::{VARIANT, VariantClear};
+use windows::core::{BSTR, Interface, Result};
 
 pub const GROUP: &str = "FirewallBlocker";
 
@@ -21,20 +20,56 @@ pub struct RuleInfo {
     pub program: String,
     pub inbound: bool,
     pub legacy: bool,
+    pub enabled: bool,
     pub missing: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Target {
+    pub program: String,
+    pub inbound: bool,
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+pub enum Request {
+    Block { targets: Vec<Target> },
+    // targets = None: every group rule; legacy: also match v1 rules
+    Unblock { targets: Option<Vec<Target>>, legacy: bool },
+    SetEnabled { targets: Vec<Target>, enabled: bool },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum Outcome {
+    Created,
+    Skipped,
+    Enabled,
+    Removed,
+    Paused,
+    Resumed,
+    Failed,
+}
+
+// `enabled` is the rule state before the operation, so it can be undone.
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct OpResult {
     pub program: String,
     pub inbound: bool,
     pub legacy: bool,
-    pub outcome: &'static str,
+    pub enabled: bool,
+    pub outcome: Outcome,
     pub error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Done {
     pub cancelled: bool,
     pub results: Vec<OpResult>,
@@ -45,11 +80,11 @@ struct Rule {
     info: RuleInfo,
 }
 
-struct Com;
+pub struct Com;
 
 impl Com {
-    fn init() -> Result<Com> {
-        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok()? };
+    pub fn init(model: COINIT) -> Result<Com> {
+        unsafe { CoInitializeEx(None, model).ok()? };
         Ok(Com)
     }
 }
@@ -116,31 +151,33 @@ fn rules(policy: &INetFwPolicy2) -> Result<Vec<Rule>> {
             if program.is_empty() {
                 continue;
             }
+            let enabled = rule.Enabled()?.as_bool();
             let missing = !*exists.entry(key(&program)).or_insert_with(|| Path::new(&program).exists());
-            out.push(Rule { com: rule, info: RuleInfo { program, inbound, legacy, missing } });
+            out.push(Rule { com: rule, info: RuleInfo { program, inbound, legacy, enabled, missing } });
         }
     }
     Ok(out)
 }
 
 pub fn list() -> Result<Vec<RuleInfo>> {
-    let _com = Com::init()?;
-    Ok(rules(&policy()?)?.into_iter().map(|r| r.info).collect())
+    let _com = Com::init(COINIT_MULTITHREADED)?;
+    let rules = rules(&policy()?)?;
+    Ok(rules.into_iter().map(|r| r.info).collect())
 }
 
-fn add_rule(rules: &INetFwRules, path: &str, inbound: bool) -> Result<()> {
-    let name = Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let dir = if inbound { "In" } else { "Out" };
+fn add_rule(rules: &INetFwRules, t: &Target) -> Result<()> {
+    let name = Path::new(&t.program).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let dir = if t.inbound { "In" } else { "Out" };
     unsafe {
         let rule: INetFwRule = CoCreateInstance(&NetFwRule, None, CLSCTX_INPROC_SERVER)?;
-        rule.SetName(&BSTR::from(format!("FirewallBlocker: {name} [{}] {dir}", path_hash(path))))?;
-        rule.SetDescription(&BSTR::from(path))?;
-        rule.SetApplicationName(&BSTR::from(path))?;
+        rule.SetName(&BSTR::from(format!("FirewallBlocker: {name} [{}] {dir}", path_hash(&t.program))))?;
+        rule.SetDescription(&BSTR::from(&t.program))?;
+        rule.SetApplicationName(&BSTR::from(&t.program))?;
         rule.SetGrouping(&BSTR::from(GROUP))?;
-        rule.SetDirection(if inbound { NET_FW_RULE_DIR_IN } else { NET_FW_RULE_DIR_OUT })?;
+        rule.SetDirection(if t.inbound { NET_FW_RULE_DIR_IN } else { NET_FW_RULE_DIR_OUT })?;
         rule.SetAction(NET_FW_ACTION_BLOCK)?;
         rule.SetProfiles(NET_FW_PROFILE2_ALL.0)?;
-        rule.SetEnabled(VARIANT_TRUE)?;
+        rule.SetEnabled(if t.enabled { VARIANT_TRUE } else { VARIANT_FALSE })?;
         rules.Add(&rule)
     }
 }
@@ -159,66 +196,82 @@ fn remove_rule(rules: &INetFwRules, rule: &INetFwRule, n: usize) -> Result<()> {
     }
 }
 
-fn outcome(program: &str, inbound: bool, legacy: bool, res: Result<&'static str>) -> OpResult {
+fn set_enabled(rule: &INetFwRule, enabled: bool) -> Result<()> {
+    unsafe { rule.SetEnabled(if enabled { VARIANT_TRUE } else { VARIANT_FALSE }) }
+}
+
+fn result(r: &RuleInfo, res: Result<Outcome>) -> OpResult {
     let (outcome, error) = match res {
         Ok(o) => (o, None),
-        Err(e) => ("failed", Some(e.message())),
+        Err(e) => (Outcome::Failed, Some(e.message())),
     };
-    OpResult { program: program.to_string(), inbound, legacy, outcome, error }
+    OpResult { program: r.program.clone(), inbound: r.inbound, legacy: r.legacy, enabled: r.enabled, outcome, error }
 }
 
-// Creates In + Out block rules, skipping directions a group rule already
-// covers. Progress unit = one rule op (files x 2).
-pub fn block(paths: &[String], cancel: &AtomicBool, progress: impl Fn(usize, usize)) -> Result<Done> {
-    let _com = Com::init()?;
+fn target_keys(targets: &[Target]) -> HashSet<(String, bool)> {
+    targets.iter().map(|t| (key(&t.program), t.inbound)).collect()
+}
+
+pub type Progress<'a> = &'a mut dyn FnMut(usize, usize);
+
+// One engine entry point for both the in-process path and the elevated helper.
+pub fn run(req: &Request, cancelled: &dyn Fn() -> bool, progress: Progress) -> Result<Done> {
+    let _com = Com::init(COINIT_MULTITHREADED)?;
     let policy = policy()?;
-    let existing: HashSet<(String, bool)> =
-        rules(&policy)?.into_iter().filter(|r| !r.info.legacy).map(|r| (key(&r.info.program), r.info.inbound)).collect();
+    let all = rules(&policy)?;
     let com_rules = unsafe { policy.Rules()? };
-    let total = paths.len() * 2;
-    let mut results = Vec::with_capacity(total);
-    for path in paths {
-        for inbound in [true, false] {
-            if cancel.load(Ordering::Relaxed) {
-                return Ok(Done { cancelled: true, results });
+    let mut results = Vec::new();
+    // each job yields one result; stops early when cancelled
+    let mut each = |total: usize, results: &mut Vec<OpResult>, job: &mut dyn FnMut(usize) -> OpResult| {
+        for n in 0..total {
+            if cancelled() {
+                return true;
             }
-            let res = if existing.contains(&(key(path), inbound)) {
-                Ok("skipped")
-            } else {
-                add_rule(&com_rules, path, inbound).map(|_| "created")
-            };
-            results.push(outcome(path, inbound, false, res));
+            results.push(job(n));
             progress(results.len(), total);
         }
-    }
-    Ok(Done { cancelled: false, results })
-}
-
-// paths = None removes every group rule (legacy excluded, like the script's
-// "Everything"); Some removes group and legacy rules for those programs.
-pub fn unblock(paths: Option<&[String]>, cancel: &AtomicBool, progress: impl Fn(usize, usize)) -> Result<Done> {
-    let _com = Com::init()?;
-    let policy = policy()?;
-    let wanted: Option<HashSet<String>> = paths.map(|p| p.iter().map(|s| key(s)).collect());
-    let targets: Vec<Rule> = rules(&policy)?
-        .into_iter()
-        .filter(|r| match &wanted {
-            None => !r.info.legacy,
-            Some(set) => set.contains(&key(&r.info.program)),
-        })
-        .collect();
-    let com_rules = unsafe { policy.Rules()? };
-    let total = targets.len();
-    let mut results = Vec::with_capacity(total);
-    for (n, t) in targets.iter().enumerate() {
-        if cancel.load(Ordering::Relaxed) {
-            return Ok(Done { cancelled: true, results });
+        false
+    };
+    let stopped = match req {
+        // a paused group rule counts as existing and gets re-enabled
+        Request::Block { targets } => {
+            let existing: HashMap<(String, bool), &Rule> =
+                all.iter().filter(|r| !r.info.legacy).map(|r| ((key(&r.info.program), r.info.inbound), r)).collect();
+            each(targets.len(), &mut results, &mut |n| {
+                let t = &targets[n];
+                match existing.get(&(key(&t.program), t.inbound)) {
+                    Some(r) if r.info.enabled || !t.enabled => result(&r.info, Ok(Outcome::Skipped)),
+                    Some(r) => result(&r.info, set_enabled(&r.com, true).map(|_| Outcome::Enabled)),
+                    None => {
+                        let info = RuleInfo { program: t.program.clone(), inbound: t.inbound, legacy: false, enabled: t.enabled, missing: false };
+                        result(&info, add_rule(&com_rules, t).map(|_| Outcome::Created))
+                    }
+                }
+            })
         }
-        let res = remove_rule(&com_rules, &t.com, n).map(|_| "removed");
-        results.push(outcome(&t.info.program, t.info.inbound, t.info.legacy, res));
-        progress(results.len(), total);
-    }
-    Ok(Done { cancelled: false, results })
+        Request::Unblock { targets, legacy } => {
+            let wanted = targets.as_deref().map(target_keys);
+            let hit: Vec<&Rule> = all
+                .iter()
+                .filter(|r| match &wanted {
+                    None => !r.info.legacy,
+                    Some(set) => (*legacy || !r.info.legacy) && set.contains(&(key(&r.info.program), r.info.inbound)),
+                })
+                .collect();
+            each(hit.len(), &mut results, &mut |n| result(&hit[n].info, remove_rule(&com_rules, &hit[n].com, n).map(|_| Outcome::Removed)))
+        }
+        Request::SetEnabled { targets, enabled } => {
+            let wanted = target_keys(targets);
+            let hit: Vec<&Rule> = all.iter().filter(|r| wanted.contains(&(key(&r.info.program), r.info.inbound))).collect();
+            let done = if *enabled { Outcome::Resumed } else { Outcome::Paused };
+            each(hit.len(), &mut results, &mut |n| {
+                let r = hit[n];
+                let res = if r.info.enabled == *enabled { Ok(Outcome::Skipped) } else { set_enabled(&r.com, *enabled).map(|_| done) };
+                result(&r.info, res)
+            })
+        }
+    };
+    Ok(Done { cancelled: stopped, results })
 }
 
 #[cfg(test)]
@@ -241,6 +294,12 @@ mod tests {
         assert_eq!(legacy_direction("Allow game.exe Inbound"), None);
     }
 
+    #[test]
+    fn request_wire_format() {
+        let r: Request = serde_json::from_str(r#"{"op":"setEnabled","targets":[{"program":"C:\\a.exe","inbound":true}],"enabled":false}"#).unwrap();
+        assert!(matches!(r, Request::SetEnabled { ref targets, enabled: false } if targets[0].enabled));
+    }
+
     // COM objects must be released before CoUninitialize: edition 2021 kept
     // tail-expression temporaries alive past it and crashed here
     #[test]
@@ -251,24 +310,25 @@ mod tests {
     // Needs an elevated shell: cargo test -- --ignored
     #[test]
     #[ignore]
-    fn block_then_unblock_roundtrip() {
+    fn block_pause_unblock_roundtrip() {
         let dir = std::env::temp_dir().join(format!("fwb-rs-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let exe = dir.join("probe.exe");
         std::fs::write(&exe, b"x").unwrap();
         let path = exe.to_string_lossy().into_owned();
-        let stop = AtomicBool::new(false);
+        let both = |enabled| [true, false].map(|inbound| Target { program: path.clone(), inbound, enabled }).to_vec();
+        let go = |req: Request| run(&req, &|| false, &mut |_, _| {}).unwrap();
+        let outcomes = |d: Done| d.results.iter().map(|r| r.outcome).collect::<Vec<_>>();
 
-        let done = block(&[path.clone()], &stop, |_, _| {}).unwrap();
-        assert!(done.results.iter().all(|r| r.outcome == "created"), "{:?}", done.results.iter().map(|r| &r.error).collect::<Vec<_>>());
-        let again = block(&[path.clone()], &stop, |_, _| {}).unwrap();
-        assert!(again.results.iter().all(|r| r.outcome == "skipped"));
-        let mine = |l: &[RuleInfo]| l.iter().filter(|r| key(&r.program) == key(&path)).count();
-        assert_eq!(mine(&list().unwrap()), 2);
-
-        let gone = unblock(Some(&[path.to_uppercase()]), &stop, |_, _| {}).unwrap();
-        assert_eq!(gone.results.iter().filter(|r| r.outcome == "removed").count(), 2);
-        assert_eq!(mine(&list().unwrap()), 0);
+        assert_eq!(outcomes(go(Request::Block { targets: both(true) })), [Outcome::Created; 2]);
+        assert_eq!(outcomes(go(Request::Block { targets: both(true) })), [Outcome::Skipped; 2]);
+        assert_eq!(outcomes(go(Request::SetEnabled { targets: both(true), enabled: false })), [Outcome::Paused; 2]);
+        let mine = || list().unwrap().into_iter().filter(|r| key(&r.program) == key(&path)).collect::<Vec<_>>();
+        assert!(mine().iter().all(|r| !r.enabled));
+        assert_eq!(outcomes(go(Request::Block { targets: both(true) })), [Outcome::Enabled; 2]);
+        let upper = [true, false].map(|inbound| Target { program: path.to_uppercase(), inbound, enabled: true }).to_vec();
+        assert_eq!(outcomes(go(Request::Unblock { targets: Some(upper), legacy: false })), [Outcome::Removed; 2]);
+        assert!(mine().is_empty());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

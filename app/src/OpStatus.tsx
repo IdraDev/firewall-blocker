@@ -12,7 +12,7 @@ import {
   ProgressBar,
   Text,
 } from "@fluentui/react-components";
-import { DeleteRegular, DismissRegular, RecordStopRegular } from "@fluentui/react-icons";
+import { ArrowUndoRegular, DeleteRegular, DismissRegular, RecordStopRegular } from "@fluentui/react-icons";
 import { useEffect, useRef, useState } from "react";
 import type { Progress } from "./api";
 import { lang, num, t } from "./i18n";
@@ -45,7 +45,7 @@ export function OperationBar() {
 }
 
 export function SummaryBar() {
-  const { summary, dismissSummary } = useOps();
+  const { summary, dismissSummary, undo, busy } = useOps();
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [summary]);
   if (!summary) return null;
@@ -67,6 +67,11 @@ export function SummaryBar() {
       <MessageBarActions
         containerAction={<Button appearance="transparent" icon={<DismissRegular />} aria-label={t.log.close} onClick={dismissSummary} />}
       >
+        {summary.undo && (
+          <Button icon={<ArrowUndoRegular />} disabled={!!busy} onClick={undo}>
+            {t.op.undo}
+          </Button>
+        )}
         {summary.failures.length > 0 && (
           <Button onClick={() => setOpen((o) => !o)}>{open ? t.op.hideErrors : t.op.showErrors}</Button>
         )}

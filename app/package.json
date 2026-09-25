@@ -1,6 +1,6 @@
 {
   "name": "firewall-blocker",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Block/unblock Windows Firewall rules for .exe files in a folder",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "web:build": "vite build",
     "typecheck": "tsc -p tsconfig.json",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "dist": "tauri build --no-bundle && bun -e \"const fs=require('fs');const v=require('./package.json').version;fs.mkdirSync('release',{recursive:true});fs.copyFileSync('src-tauri/target/release/FirewallBlocker.exe','release/FirewallBlocker-'+v+'-portable.exe')\""
+    "dist": "tauri build && bun -e \"const fs=require('fs');const v=require('./package.json').version;fs.mkdirSync('release',{recursive:true});fs.copyFileSync('src-tauri/target/release/FirewallBlocker.exe','release/FirewallBlocker-'+v+'-portable.exe');fs.copyFileSync('src-tauri/target/release/bundle/nsis/Firewall Blocker_'+v+'_x64-setup.exe','release/FirewallBlocker-'+v+'-setup.exe')\""
   },
   "dependencies": {
     "@fluentui/react-components": "^9.72.0",
