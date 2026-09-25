@@ -170,7 +170,7 @@ body {
 .empty-icon {
   display: flex;
   font-size: 48px;
-  color: var(--colorBrandForeground1);
+  color: var(--colorNeutralForeground3);
 }
 
 .opbar {
@@ -284,4 +284,14 @@ body {
   .nav :is(.fui-Tab__content, .fui-Tab__content--reserved-space) {
     display: none;
   }
+}
+
+.card-logo {
+  width: 32px;
+  height: 32px;
+}
+
+/* orange stays on the selection pill only, like WinUI */
+.nav .fui-Tab[aria-selected="true"] .fui-Tab__icon {
+  color: var(--colorNeutralForeground1);
 }

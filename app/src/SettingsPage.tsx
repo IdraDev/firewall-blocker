@@ -1,8 +1,9 @@
 import { Badge, Body1, Caption1, Dropdown, Option, Subtitle2 } from "@fluentui/react-components";
-import { DarkThemeRegular, InfoRegular, PersonKeyRegular, ShieldGlobeRegular } from "@fluentui/react-icons";
+import { DarkThemeRegular, PersonKeyRegular, ShieldGlobeRegular } from "@fluentui/react-icons";
 import { getVersion } from "@tauri-apps/api/app";
 import { useEffect, useState, type ReactNode } from "react";
 import { t } from "./i18n";
+import logo from "./logo.svg";
 import { useOps } from "./ops";
 
 export type ThemeSetting = "system" | "light" | "dark";
@@ -61,7 +62,7 @@ export function SettingsPage(p: { hidden: boolean; setting: ThemeSetting; onSett
       </SettingCard>
 
       <Subtitle2 className="section">{t.settings.about}</Subtitle2>
-      <SettingCard icon={<InfoRegular />} title={`Firewall Blocker ${version}`} hint={t.settings.aboutHint} />
+      <SettingCard icon={<img src={logo} alt="" className="card-logo" />} title={`Firewall Blocker ${version}`} hint={t.settings.aboutHint} />
     </section>
   );
 }

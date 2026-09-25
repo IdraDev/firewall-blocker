@@ -43,7 +43,7 @@ type RowAction = "reveal" | "block" | "unblock";
 function StatusBadge({ d }: { d?: Directions }) {
   if (d?.inbound && d.outbound)
     return (
-      <Badge appearance="tint" color="brand" icon={<ShieldDismissRegular />}>
+      <Badge appearance="tint" color="informative" icon={<ShieldDismissRegular />}>
         {t.folder.blocked}
       </Badge>
     );
@@ -71,7 +71,7 @@ const FileRow = memo(function FileRow(p: {
 }) {
   const { file, d } = p;
   return (
-    <TableRow className="row" appearance={p.selected ? "brand" : "none"} aria-selected={p.selected} onClick={() => p.onToggle(file.path)}>
+    <TableRow className="row" appearance={p.selected ? "neutral" : "none"} aria-selected={p.selected} onClick={() => p.onToggle(file.path)}>
       <TableSelectionCell checked={p.selected} checkboxIndicator={{ "aria-label": t.common.select }} />
       <TableCell style={COL.name} title={file.path}>
         <TableCellLayout truncate media={<AppGenericRegular />} description={p.where}>

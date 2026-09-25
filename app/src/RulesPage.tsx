@@ -47,7 +47,7 @@ const ProgramRow = memo(function ProgramRow(p: {
 }) {
   const { item } = p;
   return (
-    <TableRow className="row" appearance={p.selected ? "brand" : "none"} aria-selected={p.selected} onClick={() => p.onToggle(item.program)}>
+    <TableRow className="row" appearance={p.selected ? "neutral" : "none"} aria-selected={p.selected} onClick={() => p.onToggle(item.program)}>
       <TableSelectionCell checked={p.selected} checkboxIndicator={{ "aria-label": t.common.select }} />
       <TableCell style={COL.program} title={item.program}>
         <TableCellLayout truncate media={<AppGenericRegular />} description={item.program}>

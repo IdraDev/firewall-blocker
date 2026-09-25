@@ -1,4 +1,6 @@
-# 🔥 Firewall Blocker (v2.0)
+<img src="app/src/logo.svg" width="64" alt="" />
+
+# Firewall Blocker (v2.0)
 
 Block or unblock every `.exe` in a directory tree with Windows Firewall rules. Use the desktop app, the interactive terminal UI, or the scriptable CLI: all three work on the same rules. Built for sysadmins and power users who need control without the bloat.
 
