@@ -49,6 +49,16 @@ try {
     Check 'files scope: exact path, any case' ((Names @(Get-UnblockTargets -Scope Files -Files 'c:\games\A.EXE')) -eq 'r1,r2')
     Check 'all scope: group rules only' ((Names @(Get-UnblockTargets -Scope All)) -eq 'r1,r2,r3')
 
+    # GUID-named rules (created by the app over COM) must count as existing
+    $e = Get-FwbRules
+    Check 'existing: keyed by program + direction, any case' (
+        $e.ContainsKey((Get-RuleKey 'c:\games\A.EXE' 'Outbound')) -and
+        -not $e.ContainsKey((Get-RuleKey 'C:\Gamesx\b.exe' 'Outbound')))
+    $files = @([pscustomobject]@{ FullName = 'C:\Games\a.exe'; Name = 'a.exe' },
+               [pscustomobject]@{ FullName = 'C:\Gamesx\b.exe'; Name = 'b.exe' })
+    $plan = @(Invoke-BlockRules -Files $files -Existing $e -DryRun $true | ForEach-Object Outcome)
+    Check 'block: existing directions skipped' (($plan -join ',') -eq 'Skipped,Skipped,Skipped,DryRun')
+
     $d = Get-BlockedDirections
     Check 'status: both directions blocked' ($d['C:\GAMES\A.EXE'].Inbound -and $d['C:\GAMES\A.EXE'].Outbound)
     Check 'status: legacy rule counts' (-not $d['C:\Games\sub\c.exe'].Inbound -and $d['C:\Games\sub\c.exe'].Outbound)

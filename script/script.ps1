@@ -110,9 +110,8 @@ function Show-BlockPreview {
     $rail = "  $($script:G.Rail)  "
     $full = 0; $part = 0; $none = 0; $ops = 0
     foreach ($f in $Files) {
-        $names = Get-RuleNames $f.FullName
-        $hasIn = $Existing.ContainsKey($names.In)
-        $hasOut = $Existing.ContainsKey($names.Out)
+        $hasIn = $Existing.ContainsKey((Get-RuleKey $f.FullName 'Inbound'))
+        $hasOut = $Existing.ContainsKey((Get-RuleKey $f.FullName 'Outbound'))
         if ($hasIn -and $hasOut) { $full++ }
         elseif ($hasIn -or $hasOut) { $part++; $ops++ }
         else { $none++; $ops += 2 }

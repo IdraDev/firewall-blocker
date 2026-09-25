@@ -49,6 +49,11 @@ function Get-RuleNames {
     [pscustomobject]@{ Hash = $h; In = "FWB_${h}_In"; Out = "FWB_${h}_Out" }
 }
 
+function Get-RuleKey {
+    param([string]$Program, [string]$Direction)
+    "$Program|$Direction"
+}
+
 #endregion
 
 #region Engine (no UI in this region)
@@ -65,14 +70,17 @@ function Get-ExeFiles {
     return [pscustomobject]@{ Files = $files; ErrorCount = $errs.Count }
 }
 
-# All rules created by this tool, keyed on internal name (FWB_<hash16>_<dir>).
-# Loaded once per action: existence checks are O(1) lookups, never wildcard
-# -DisplayName queries.
+# All rules created by this tool, keyed on Get-RuleKey (program + direction,
+# case-insensitive), not on the rule name: the desktop app creates rules over
+# COM, which assigns GUID names.
 function Get-FwbRules {
-    $map = @{}
-    $rules = @(Get-NetFirewallRule -Group $script:Group -ErrorAction SilentlyContinue)
-    foreach ($r in $rules) { $map[$r.Name] = $r }
-    return $map
+    $map = Get-RuleProgramMap
+    $index = @{}
+    foreach ($r in $map.Rules) {
+        $prog = $map.Programs[$r.Name]
+        if ($prog) { $index[(Get-RuleKey $prog ([string]$r.Direction))] = $r }
+    }
+    return $index
 }
 
 function Get-GroupRuleCount {
@@ -109,7 +117,7 @@ function Invoke-BlockRules {
             $op++
             if ($direction -eq 'Inbound') { $dirShort = 'In' } else { $dirShort = 'Out' }
             $name = "FWB_${hash}_$dirShort"
-            if ($Existing.ContainsKey($name)) {
+            if ($Existing.ContainsKey((Get-RuleKey $file.FullName $direction))) {
                 $outcome = 'Skipped'; $detail = 'already exists'
             } elseif ($DryRun) {
                 $outcome = 'DryRun'; $detail = 'would create'
